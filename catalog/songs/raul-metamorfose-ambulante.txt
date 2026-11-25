@@ -1,0 +1,64 @@
+titulo: Metamorfose Ambulante
+artista: Raul Seixas
+tom: D
+bpm: 110
+compasso: 4
+nivel: intermediario
+tags: rock, nacional, anos 70, pestana
+fonte: sequência de acordes da cifra principal (Cifra Club)
+
+# Durações aproximadas: cada linha da letra ≈ 2 compassos
+# (linha com dois acordes = 1 compasso cada). Para acertar: "Gravar durações".
+
+[Intro]
+| A | G | D | E | A |
+| G . D . | A | (3x)
+
+[Primeira parte]
+A:4 G:4
+D:4 A:4
+G:8
+D:4 A:4
+G:4 D:4
+A:8
+G:4 D:4
+A:8
+
+[Passagem]
+| G | A | C | A |
+| G | E | G |
+| E | G | E |
+
+[Segunda e terceira parte]
+A:4 G:4
+D:4 A:4
+G:8
+D:4 A:4
+G:4 D:4
+A:8
+G:4 Bb9:4
+A:8
+
+[Refrão]
+F:4 C:4
+D:16
+C:8 D:8 C:8
+D:8 C:8 D:8 C:8
+
+[Final]
+A:4 G:4
+D:4 A:4
+A:4 G:4
+D:4 A:4
+G:8
+D:4 A:4
+G:4 D:4
+A:8
+G:4 D:4
+A:8
+G:4 D:4
+A:8
+G:4 D:4
+A:8
+
+Estrutura: Intro, Primeira parte, Passagem, Segunda e terceira parte, Refrão, Segunda e terceira parte, Refrão, Final
