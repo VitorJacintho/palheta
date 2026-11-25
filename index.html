@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Palheta — treino de guitarra</title>
+  <meta name="description" content="Afinador, acompanhamento de acordes no seu ritmo e treino de solos com tablatura." />
+  <meta name="theme-color" content="#14110f" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="icons/icon.svg" alt="" width="28" height="28" />
+      <span>Palheta</span>
+    </div>
+    <div class="top-actions">
+      <button id="btn-install" class="chip hidden" type="button">Instalar app</button>
+      <button id="btn-mic" class="chip mic-off" type="button" aria-live="polite">
+        <span class="mic-dot"></span><span class="mic-label">Microfone desligado</span>
+      </button>
+      <button id="btn-settings" class="icon-btn" type="button" aria-label="Ajustes">
+        <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M19.4 13a7.5 7.5 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7 7 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.5 7.5 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7 7 0 0 0 1.7-1l2.4 1 2-3.4zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- AFINADOR -->
+    <section id="view-tuner" class="view" data-view="tuner">
+      <div class="tuner card">
+        <div class="tuner-note">
+          <div id="tuner-letter" class="big-note">–</div>
+          <div id="tuner-solfege" class="solfege">Toque uma corda</div>
+        </div>
+        <div class="meter" aria-hidden="true">
+          <div class="meter-scale">
+            <span>-50</span><span>-25</span><span class="zero">0</span><span>+25</span><span>+50</span>
+          </div>
+          <div class="meter-track"><div class="meter-center"></div><div id="tuner-needle" class="needle"></div></div>
+        </div>
+        <div class="tuner-readout">
+          <span id="tuner-cents">— cents</span>
+          <span id="tuner-freq">— Hz</span>
+        </div>
+        <div id="tuner-status" class="tuner-status">Aguardando som…</div>
+      </div>
+
+      <div class="card">
+        <div class="row-between">
+          <h3>Cordas</h3>
+          <select id="tuning-select" aria-label="Afinação"></select>
+        </div>
+        <div id="strings" class="strings"></div>
+        <p class="muted small">Toque em uma corda para ouvir a nota de referência.</p>
+      </div>
+
+      <div class="card">
+        <h3>Detector de acordes</h3>
+        <div class="detector">
+          <div id="detector-chord" class="detector-chord">–</div>
+          <div class="chroma" id="chroma-bars"></div>
+        </div>
+        <div class="level"><div id="level-bar"></div><div id="level-gate"></div></div>
+        <p class="muted small">Use para testar se o app está ouvindo bem. Se a barra não passar da marca, aumente a sensibilidade nos ajustes.</p>
+      </div>
+    </section>
+
+    <!-- TOCAR (ACORDES) -->
+    <section id="view-play" class="view" data-view="play">
+      <div id="play-list-panel">
+        <div class="row-between">
+          <h2>Tocar junto</h2>
+          <button id="btn-new-song" class="btn" type="button">+ Nova música</button>
+        </div>
+        <p class="muted">Escolha uma música. O app fala o próximo acorde, segue o seu ritmo e no final te dá uma nota.</p>
+        <div id="song-list" class="list"></div>
+      </div>
+
+      <div id="play-setup-panel" class="hidden">
+        <button class="back" type="button" data-back="play">← Músicas</button>
+        <div class="card">
+          <h2 id="setup-title"></h2>
+          <p id="setup-artist" class="muted"></p>
+          <div id="setup-chords" class="chips"></div>
+        </div>
+        <div class="card form">
+          <label>Modo
+            <div class="seg" id="mode-seg">
+              <button type="button" data-mode="follow" class="on">Seguir meu ritmo</button>
+              <button type="button" data-mode="metronome">Metrônomo fixo</button>
+            </div>
+          </label>
+          <p id="mode-help" class="muted small"></p>
+          <label>Andamento inicial: <b><span id="bpm-val"></span> BPM</b>
+            <input id="bpm-range" type="range" min="40" max="200" step="1" />
+          </label>
+          <label class="check"><input id="opt-countin" type="checkbox" checked /> Contagem antes de começar</label>
+          <label class="check" id="opt-click-wrap"><input id="opt-click" type="checkbox" checked /> Clique do metrônomo durante a música</label>
+          <label class="check"><input id="opt-voice" type="checkbox" /> Voz anunciando os acordes</label>
+          <div class="actions">
+            <button id="btn-edit-song" class="btn ghost" type="button">Editar</button>
+            <button id="btn-start-song" class="btn primary big" type="button">▶ Começar</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="play-session-panel" class="hidden">
+        <div class="session-head">
+          <div>
+            <div id="sess-title" class="sess-title"></div>
+            <div id="sess-sub" class="muted small"></div>
+          </div>
+          <div class="sess-stats">
+            <div><span id="sess-bpm">–</span><small>BPM</small></div>
+          </div>
+        </div>
+        <div class="stage card">
+          <div id="sess-count" class="countin hidden"></div>
+          <div class="now">
+            <div class="now-label">Toque agora</div>
+            <div id="sess-chord" class="now-chord">–</div>
+            <div id="sess-chord-name" class="now-name"></div>
+            <div class="beats" id="sess-beats"></div>
+          </div>
+          <div class="shape-wrap">
+            <div id="sess-shape" class="shape"></div>
+            <button id="btn-hear" class="chip" type="button">🔊 Ouvir</button>
+          </div>
+          <div class="next">
+            <div class="now-label">Próximo</div>
+            <div id="sess-next" class="next-chord">–</div>
+          </div>
+        </div>
+        <div class="listen card">
+          <div class="listen-row">
+            <span class="muted">Ouvindo:</span>
+            <b id="sess-detected">–</b>
+            <span id="sess-match" class="match-dot"></span>
+          </div>
+          <div id="sess-hint" class="hint"></div>
+        </div>
+        <div id="timeline" class="timeline"></div>
+        <div class="actions">
+          <button id="btn-skip" class="btn ghost" type="button">Pular acorde</button>
+          <button id="btn-stop" class="btn danger" type="button">■ Parar</button>
+        </div>
+      </div>
+
+      <div id="play-results-panel" class="hidden"></div>
+    </section>
+
+    <!-- TABLATURA -->
+    <section id="view-tab" class="view" data-view="tab">
+      <div id="tab-list-panel">
+        <div class="row-between">
+          <h2>Tablatura / solos</h2>
+          <button id="btn-new-tab" class="btn" type="button">+ Nova tablatura</button>
+        </div>
+        <p class="muted">Treine solos nota a nota. Cole uma tablatura em texto (e|---5---) e o app confere cada nota que você toca.</p>
+        <div id="tab-list" class="list"></div>
+      </div>
+
+      <div id="tab-setup-panel" class="hidden">
+        <button class="back" type="button" data-back="tab">← Tablaturas</button>
+        <div class="card">
+          <h2 id="tsetup-title"></h2>
+          <p id="tsetup-info" class="muted"></p>
+          <div id="tsetup-preview" class="tab-scroll"></div>
+        </div>
+        <div class="card form">
+          <label>Modo
+            <div class="seg" id="tmode-seg">
+              <button type="button" data-mode="wait" class="on">Espera (no meu tempo)</button>
+              <button type="button" data-mode="metronome">Com metrônomo</button>
+            </div>
+          </label>
+          <p id="tmode-help" class="muted small"></p>
+          <div id="tmetro-opts">
+            <label>Andamento: <b><span id="tbpm-val"></span> BPM</b>
+              <input id="tbpm-range" type="range" min="30" max="200" step="1" />
+            </label>
+            <label>Notas por tempo
+              <select id="tperbeat">
+                <option value="1">1 (semínimas)</option>
+                <option value="2">2 (colcheias)</option>
+                <option value="3">3 (tercinas)</option>
+                <option value="4">4 (semicolcheias)</option>
+              </select>
+            </label>
+          </div>
+          <label class="check"><input id="topt-speak" type="checkbox" /> Falar cada nota (modo espera)</label>
+          <div class="actions">
+            <button id="btn-edit-tab" class="btn ghost" type="button">Editar</button>
+            <button id="btn-start-tab" class="btn primary big" type="button">▶ Começar</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="tab-session-panel" class="hidden">
+        <div class="session-head">
+          <div>
+            <div id="tsess-title" class="sess-title"></div>
+            <div id="tsess-sub" class="muted small"></div>
+          </div>
+          <div class="sess-stats"><div><span id="tsess-progress">0/0</span><small>notas</small></div></div>
+        </div>
+        <div class="card tab-now">
+          <div>
+            <div class="now-label">Toque agora</div>
+            <div id="tsess-note" class="now-chord small-chord">–</div>
+            <div id="tsess-where" class="now-name"></div>
+          </div>
+          <div>
+            <div class="now-label">Ouvindo</div>
+            <div id="tsess-detected" class="detected-note">–</div>
+          </div>
+        </div>
+        <div id="tsess-hint" class="hint"></div>
+        <div id="tsess-tab" class="tab-scroll live"></div>
+        <div class="actions">
+          <button id="btn-tstop" class="btn danger" type="button">■ Parar</button>
+        </div>
+      </div>
+
+      <div id="tab-results-panel" class="hidden"></div>
+    </section>
+
+    <!-- PROGRESSO -->
+    <section id="view-progress" class="view" data-view="progress">
+      <div class="row-between">
+        <h2>Seu progresso</h2>
+        <button id="btn-clear-history" class="btn ghost small" type="button">Limpar</button>
+      </div>
+      <div id="progress-summary" class="stats-grid"></div>
+      <div id="history-list" class="list"></div>
+    </section>
+  </main>
+
+  <nav class="tabbar" aria-label="Navegação">
+    <button data-nav="tuner" type="button">
+      <svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0-9 9h2a7 7 0 0 1 14 0h2a9 9 0 0 0-9-9zm4.2 4.4-4.9 4.2a1.6 1.6 0 1 0 2.2 2.2z" fill="currentColor"/></svg>
+      <span>Afinador</span>
+    </button>
+    <button data-nav="play" type="button">
+      <svg viewBox="0 0 24 24"><path d="M19 3 9 5v10.3A3.5 3.5 0 1 0 11 18V8.6l6-1.2v5.9A3.5 3.5 0 1 0 19 16z" fill="currentColor"/></svg>
+      <span>Tocar</span>
+    </button>
+    <button data-nav="tab" type="button">
+      <svg viewBox="0 0 24 24"><path d="M3 5h18v1.5H3zm0 4h18v1.5H3zm0 4h18v1.5H3zm0 4h18v1.5H3z" fill="currentColor" opacity=".5"/><text x="6" y="12" font-size="7" font-weight="700" fill="currentColor">5</text><text x="14" y="16" font-size="7" font-weight="700" fill="currentColor">7</text></svg>
+      <span>Tablatura</span>
+    </button>
+    <button data-nav="progress" type="button">
+      <svg viewBox="0 0 24 24"><path d="M4 20V10h3v10zm6 0V4h3v16zm6 0v-7h3v7z" fill="currentColor"/></svg>
+      <span>Progresso</span>
+    </button>
+  </nav>
+
+  <!-- Editor de música / tablatura -->
+  <dialog id="editor" class="sheet">
+    <form method="dialog" id="editor-form">
+      <div class="sheet-head">
+        <h2 id="editor-title">Nova música</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Fechar">✕</button>
+      </div>
+      <label>Título <input name="title" required maxlength="80" /></label>
+      <label>Artista <input name="artist" maxlength="80" /></label>
+      <div class="two">
+        <label>BPM <input name="bpm" type="number" min="30" max="240" value="80" /></label>
+        <label id="ed-bpb-wrap">Tempos por compasso <input name="beatsPerBar" type="number" min="2" max="12" value="4" /></label>
+        <label id="ed-perbeat-wrap" class="hidden">Notas por tempo <input name="perBeat" type="number" min="1" max="4" value="2" /></label>
+      </div>
+      <label><span id="ed-text-label">Acordes / cifra</span>
+        <textarea name="text" rows="10" spellcheck="false"></textarea>
+      </label>
+      <details class="help" id="ed-help-chords">
+        <summary>Como escrever</summary>
+        <ul>
+          <li><b>Cole a cifra inteira</b> (ex.: do Cifra Club). As linhas com letra são ignoradas, cada acorde vira 1 compasso.</li>
+          <li><code>| G . C . | D |</code> — compassos; cada <code>.</code> estende o acorde anterior.</li>
+          <li><code>G:2 C:2 D:4</code> — duração em tempos.</li>
+          <li><code>[Refrão]</code> ou <code>Intro:</code> — nome da parte. <code>(2x)</code> no fim repete a linha.</li>
+        </ul>
+      </details>
+      <details class="help hidden" id="ed-help-tab">
+        <summary>Como escrever</summary>
+        <ul>
+          <li>Cole a tablatura em texto com 6 linhas por bloco (corda 1 em cima).</li>
+          <li>O espaçamento entre os números define a duração relativa das notas.</li>
+          <li>Técnicas (h, p, b, /, ~) são aceitas, mas o app confere só a altura de cada nota.</li>
+        </ul>
+      </details>
+      <div id="editor-preview" class="preview"></div>
+      <div class="actions">
+        <button type="button" id="editor-delete" class="btn danger ghost">Excluir</button>
+        <button type="submit" class="btn primary">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Ajustes -->
+  <dialog id="settings" class="sheet">
+    <form method="dialog" id="settings-form">
+      <div class="sheet-head">
+        <h2>Ajustes</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Fechar">✕</button>
+      </div>
+      <label>Sensibilidade do microfone: <b id="sens-val"></b>
+        <input name="sensitivity" type="range" min="1" max="10" step="1" />
+      </label>
+      <p class="muted small">Ambiente barulhento → diminua. Violão baixinho ou celular longe → aumente.</p>
+      <label class="check"><input name="voice" type="checkbox" /> Voz anunciando acordes e notas</label>
+      <label>Quando anunciar
+        <select name="announce">
+          <option value="before">Um tempo antes da troca</option>
+          <option value="now">Na hora da troca ("Agora Ré")</option>
+        </select>
+      </label>
+      <label>Velocidade da voz <input name="voiceRate" type="range" min="0.8" max="1.6" step="0.1" /></label>
+      <label>Volume do metrônomo <input name="metronomeVolume" type="range" min="0" max="1" step="0.05" /></label>
+      <button type="button" id="btn-test-voice" class="btn ghost">Testar voz</button>
+      <hr style="border:0;border-top:1px solid var(--line);margin:16px 0" />
+      <label>Atraso do áudio: <b id="lat-val"></b> ms
+        <input name="latencyMs" type="range" min="0" max="300" step="5" />
+      </label>
+      <button type="button" id="btn-calibrate" class="btn ghost">Calibrar automaticamente</button>
+      <p class="muted small">Compensa o atraso entre o som e o app nos modos com metrônomo. Para calibrar: sem fone, volume alto e silêncio — o app toca 8 cliques e mede.</p>
+      <p class="muted small">Dica: com fone de ouvido o app escuta melhor a guitarra (a voz e o clique não vazam no microfone).</p>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status"></div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

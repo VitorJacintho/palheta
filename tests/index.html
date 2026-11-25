@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Palheta — testes</title>
+  <style>
+    body { font: 14px/1.5 system-ui, sans-serif; background: #14110f; color: #f4ede6; padding: 16px; }
+    .ok { color: #4ade80; } .fail { color: #f87171; } h1 { font-size: 18px; }
+  </style>
+</head>
+<body>
+  <h1>Testes</h1>
+  <div id="summary"></div>
+  <ul id="out"></ul>
+  <script type="module">
+    import { parseChord, isChordToken, midiToFreq } from '../js/music/theory.js';
+    import { parseProgression, mergeRepeats } from '../js/music/songParser.js';
+    import { parseTab } from '../js/music/tabParser.js';
+    import { detectPitch } from '../js/audio/yin.js';
+    import { computeChroma, recognizeChord } from '../js/audio/chroma.js';
+    import { shapeFor, shapeMidis } from '../js/music/chordShapes.js';
+    import { DEFAULT_SONGS, DEFAULT_TABS } from '../js/data/defaults.js';
+
+    const results = [];
+    const test = (name, fn) => {
+      try { fn(); results.push([name, true]); }
+      catch (e) { results.push([name, false, e.message]); }
+    };
+    const eq = (a, b, msg = '') => {
+      const A = JSON.stringify(a), B = JSON.stringify(b);
+      if (A !== B) throw new Error(`${msg} esperado ${B}, veio ${A}`);
+    };
+    const ok = (v, msg) => { if (!v) throw new Error(msg || 'falhou'); };
+
+    // --- Teoria -----------------------------------------------------------
+    test('parseChord básicos', () => {
+      eq(parseChord('G').pcs, [7, 11, 2]);
+      eq(parseChord('Am').pcs, [9, 0, 4]);
+      eq(parseChord('F#m').root, 6);
+      eq(parseChord('Bb').root, 10);
+      eq(parseChord('D7').suffix, '7');
+      eq(parseChord('C7M').suffix, 'maj7');
+      eq(parseChord('Cmaj7').suffix, 'maj7');
+      eq(parseChord('Bm7(b5)').suffix, 'm7b5');
+      eq(parseChord('E5').suffix, '5');
+      eq(parseChord('Asus4').suffix, 'sus4');
+      eq(parseChord('D/F#').bass, 6);
+      eq(parseChord('G°').quality, 'dim');
+      eq(parseChord('C9').suffix, '9');
+    });
+    test('nomes falados em português', () => {
+      eq(parseChord('C').spoken, 'Dó');
+      eq(parseChord('Dm').spoken, 'Ré menor');
+      eq(parseChord('F#m').spoken, 'Fá sustenido menor');
+      eq(parseChord('Bb7').spoken, 'Si bemol com sétima');
+      eq(parseChord('G7M').spoken, 'Sol com sétima maior');
+    });
+    test('letra não é acorde', () => {
+      ['Amor', 'Bem', 'Eu', 'Dói', 'Chuva', 'Ele', 'Gente', 'Cada', 'Agora'].forEach((w) => ok(!isChordToken(w), w));
+      ['E', 'A', 'Em7', 'C#m7(b5)', 'D/F#', 'G7M', 'A7(9)', 'Bb°'].forEach((w) => ok(isChordToken(w), w));
+    });
+
+    // --- Progressões --------------------------------------------------------
+    test('compassos com pontos', () => {
+      const p = parseProgression('| G . C . | D |', 4);
+      eq(p.items.map((i) => [i.symbol, i.beats]), [['G', 2], ['C', 2], ['D', 4]]);
+    });
+    test('linha de acordes + repetição', () => {
+      const p = parseProgression('C G Am F (2x)', 4);
+      eq(p.items.length, 8);
+      eq(p.items[4].symbol, 'C');
+    });
+    test('duração explícita', () => {
+      const p = parseProgression('G:2 C:2 D:4', 4);
+      eq(p.items.map((i) => i.beats), [2, 2, 4]);
+    });
+    test('cifra com letra ignora letra e pega seções', () => {
+      const p = parseProgression(DEFAULT_SONGS.find((s) => s.id === 'ex-cifra').chords, 4);
+      eq(p.items.map((i) => i.symbol), ['Em', 'D', 'C', 'D', 'Em', 'D', 'C', 'D', 'G', 'D/F#', 'Em', 'C', 'D', 'G']);
+      eq(p.items[0].section, 'Intro');
+      eq(p.items[8].section, 'Refrão');
+      eq(p.ignoredLines, 4);
+    });
+    test('linha de letra começando com "E" é ignorada', () => {
+      const p = parseProgression('G\nE o resto da frase\nC', 4);
+      eq(p.items.map((i) => i.symbol), ['G', 'C']);
+    });
+    test('mergeRepeats junta acordes iguais', () => {
+      const m = mergeRepeats(parseProgression('| G | G | C | G |', 4).items);
+      eq(m.map((s) => [s.symbol, s.beats]), [['G', 8], ['C', 4], ['G', 4]]);
+    });
+    test('todas as músicas padrão têm acordes', () => {
+      DEFAULT_SONGS.forEach((s) => ok(parseProgression(s.chords, s.beatsPerBar).items.length > 3, s.title));
+    });
+
+    // --- Tablatura ------------------------------------------------------------
+    test('tablatura pentatônica', () => {
+      const t = parseTab(DEFAULT_TABS[0].tab);
+      eq(t.systems.length, 2);
+      eq(t.events.length, 24);
+      eq(t.events[0].notes[0], { string: 6, fret: 5, midi: 45 });   // A2
+      eq(t.events[11].notes[0].midi, 72);                            // corda 1, casa 8 = C5
+      eq(t.events[12].notes[0], { string: 1, fret: 8, midi: 72 });   // início da descida
+    });
+    test('números de dois dígitos e acordes na tab', () => {
+      const t = parseTab('e|--12--|\nB|--13--|\nG|------|\nD|------|\nA|------|\nE|--0---|');
+      eq(t.events.length, 1);
+      eq(t.events[0].notes.map((n) => n.fret), [12, 13, 0]);
+    });
+    test('todas as tabs padrão têm notas', () => {
+      DEFAULT_TABS.forEach((t) => ok(parseTab(t.tab).events.length >= 8, t.title));
+    });
+
+    // --- Áudio sintético ----------------------------------------------------
+    const SR = 48000;
+    function tone(freq, n = 2048) {
+      const b = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        let v = 0;
+        for (let h = 1; h <= 6; h++) v += Math.sin(2 * Math.PI * freq * h * i / SR) / h;
+        b[i] = v * 0.3;
+      }
+      return b;
+    }
+    test('YIN detecta as cordas soltas', () => {
+      [40, 45, 50, 55, 59, 64, 76].forEach((m) => {
+        const f = midiToFreq(m);
+        const p = detectPitch(tone(f), SR);
+        ok(p, 'sem detecção em ' + m);
+        const cents = 1200 * Math.log2(p.freq / f);
+        ok(Math.abs(cents) < 5, `midi ${m}: erro ${cents.toFixed(1)} cents`);
+      });
+    });
+
+    // espectro sintético: picos nos harmônicos das notas do shape
+    function spectrumFor(midis, fft = 8192) {
+      const mags = new Float32Array(fft / 2);
+      midis.forEach((m) => {
+        const f0 = midiToFreq(m);
+        for (let h = 1; h <= 8; h++) {
+          const bin = (f0 * h) / (SR / fft);
+          const i = Math.round(bin);
+          if (i < mags.length - 1) {
+            const a = 1 / h;
+            mags[i] += a; mags[i - 1] += a * 0.4; mags[i + 1] += a * 0.4;
+          }
+        }
+      });
+      for (let i = 0; i < mags.length; i++) mags[i] += 0.002 * Math.random();
+      return mags;
+    }
+    const chordsToTest = ['C', 'D', 'E', 'G', 'A', 'Am', 'Dm', 'Em', 'F', 'Bm', 'E7', 'A7', 'D7', 'G7', 'F#m', 'Cm', 'Bb'];
+    test('reconhece acordes (espectro sintético)', () => {
+      const fails = [];
+      chordsToTest.forEach((sym) => {
+        const ch = parseChord(sym);
+        const chroma = computeChroma(spectrumFor(shapeMidis(shapeFor(ch))), SR, 8192);
+        const r = recognizeChord(chroma, ch);
+        if (!r.match) fails.push(`${sym}→${r.best.symbol} (${r.targetScore.toFixed(2)})`);
+      });
+      ok(!fails.length, 'falhou: ' + fails.join(', '));
+    });
+    test('não confunde maior com menor', () => {
+      const pairs = [['C', 'Cm'], ['A', 'Am'], ['E', 'Em'], ['D', 'Dm'], ['G', 'Gm']];
+      const fails = [];
+      pairs.forEach(([maj, min]) => {
+        const chroma = computeChroma(spectrumFor(shapeMidis(shapeFor(parseChord(maj)))), SR, 8192);
+        if (recognizeChord(chroma, parseChord(min)).match) fails.push(`${maj} aceito como ${min}`);
+        const chroma2 = computeChroma(spectrumFor(shapeMidis(shapeFor(parseChord(min)))), SR, 8192);
+        if (recognizeChord(chroma2, parseChord(maj)).match) fails.push(`${min} aceito como ${maj}`);
+      });
+      ok(!fails.length, fails.join(', '));
+    });
+    test('troca G → C → D distinguível', () => {
+      const G = parseChord('G'), C = parseChord('C'), D = parseChord('D');
+      const chromaC = computeChroma(spectrumFor(shapeMidis(shapeFor(C))), SR, 8192);
+      ok(!recognizeChord(chromaC, G).match, 'C aceito como G');
+      ok(!recognizeChord(chromaC, D).match, 'C aceito como D');
+    });
+    test('desenhos existem para acordes comuns', () => {
+      ['C', 'C#', 'Db', 'Eb', 'F#', 'Ab', 'Bb', 'Cm', 'C#m', 'Ebm', 'G#m', 'Bbm', 'F#7', 'C#m7', 'Bbmaj7', 'Bdim', 'Bm7(b5)', 'E5', 'D/F#']
+        .forEach((s) => ok(shapeFor(parseChord(s)), s));
+    });
+
+    const out = document.getElementById('out');
+    out.innerHTML = results.map(([n, pass, msg]) => `<li class="${pass ? 'ok' : 'fail'}">${pass ? '✓' : '✗'} ${n}${msg ? ' — ' + msg : ''}</li>`).join('');
+    const failed = results.filter((r) => !r[1]).length;
+    document.getElementById('summary').innerHTML = `<b class="${failed ? 'fail' : 'ok'}">${results.length - failed}/${results.length} passaram</b>`;
+    window.__results = { total: results.length, failed, results };
+  </script>
+</body>
+</html>
