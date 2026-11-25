@@ -6,6 +6,7 @@
 import { engine, getAudioContext } from '../audio/engine.js';
 import { recognizeChord } from '../audio/chroma.js';
 import { parseProgression, mergeRepeats } from '../music/songParser.js';
+import { sameChordFamily } from '../music/theory.js';
 import { speak, isSpeaking, stopSpeaking } from '../services/speech.js';
 import { Metronome } from '../services/sound.js';
 import { settings } from '../services/storage.js';
@@ -77,6 +78,7 @@ export class ChordSession {
     }
     speak(`Comece com ${this.segments[0].chord.spoken}`);
     this.announced = new Set([0]);
+    this.carry = null;
     this.unsub = engine.subscribe((f) => this.onFrame(f));
     this.nextStreak = 0;
     this.wrongStreak = 0;
@@ -146,8 +148,16 @@ export class ChordSession {
     // Detecção de troca para o próximo acorde
     if (i < this.segments.length - 1) {
       const next = this.segments[i + 1];
+      // D → D7, G → G5/F#: pelo som não dá pra distinguir com segurança.
+      // Nesses casos o app troca sozinho, no andamento atual do guitarrista.
+      if (sameChordFamily(cur.chord, next.chord)) {
+        if (elapsed >= expected) {
+          this.advance(this.segStart + expected, 'auto');
+          return;
+        }
+      }
       let nextOk = false;
-      if (f.voiced) {
+      if (f.voiced && !sameChordFamily(cur.chord, next.chord)) {
         const r2 = recognizeChord(f.chroma, next.chord);
         nextOk = r2.match && r2.targetScore > (curMatch?.targetScore ?? 0) + 0.02;
       }
@@ -199,17 +209,27 @@ export class ChordSession {
     this.results[0].reached = true;
   }
 
-  advance(t, skipped = false) {
+  /** mode: false = troca detectada, true = pulada, 'auto' = troca automática */
+  advance(t, mode = false) {
     const st = this.state;
     const i = st.index;
     const cur = this.segments[i];
     const rec = this.results[i];
+    const skipped = mode === true;
     rec.actualSec = t - this.segStart;
     rec.expectedSec = cur.beats * this.beatSec;
     rec.skipped = skipped;
+    rec.auto = mode === 'auto';
 
-    if (!skipped && rec.actualSec > 0.2) {
-      const observedBeat = rec.actualSec / cur.beats;
+    // Trocas automáticas não são medidas sozinhas: o trecho (ex.: D + D7) é medido
+    // inteiro, do início até a próxima troca que o app realmente ouviu.
+    const span = { start: this.carry?.start ?? this.segStart, beats: (this.carry?.beats ?? 0) + cur.beats };
+    this.carry = rec.auto ? span : null;
+    const spanSec = t - span.start;
+
+    if (!skipped && !rec.auto && spanSec > 0.2) {
+      const observedBeat = spanSec / span.beats;
+      rec.beatDur = observedBeat;
       const ratio = clamp(observedBeat / this.beatSec, 0.6, 1.6);
       rec.observedBpm = 60 / observedBeat;
       this.tempoSamples.push(rec.observedBpm);
@@ -292,8 +312,7 @@ export class ChordSession {
     if (this.mode === 'follow') {
       // ritmo: cada acorde durou o número certo de tempos, medido no andamento
       // do PRÓPRIO guitarrista (mediana), não no BPM original da música
-      const beatDurs = R.filter((r) => r.actualSec != null && !r.skipped && r.actualSec > 0.2)
-        .map((r) => r.actualSec / r.beats);
+      const beatDurs = R.filter((r) => r.beatDur != null).map((r) => r.beatDur);
       const med = median(beatDurs);
       const rhythm = beatDurs.length ? Math.round(mean(beatDurs.map((d) => relScore(d / med - 1, 0.4))) * 100) : 0;
       // estabilidade: acelerou ou atrasou ao longo da música?

@@ -1,5 +1,5 @@
 // Service worker: deixa o app funcionando offline depois da primeira visita.
-const CACHE = 'palheta-v1';
+const CACHE = 'palheta-v2';
 const ASSETS = [
   './',
   './index.html',

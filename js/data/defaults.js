@@ -1,7 +1,33 @@
 // Conteúdo inicial: exercícios de progressão e de solo (originais/genéricos).
 // Para músicas reais, cole a cifra no editor do app — só as linhas de acordes são usadas.
 
+// Para adicionar músicas novas: inclua um item com `id` novo. Quem já tem o app
+// instalado recebe a música na próxima abertura (ver `collection` em storage.js).
 export const DEFAULT_SONGS = [
+  {
+    id: 'raul-medo-da-chuva',
+    title: 'Medo da Chuva',
+    artist: 'Raul Seixas',
+    bpm: 100,
+    beatsPerBar: 4,
+    // Sequência de acordes da cifra simplificada (intro da versão principal).
+    // Durações aproximadas: cada linha da letra ≈ 2 compassos.
+    chords:
+      '[Intro]\n' +
+      '| A7 | D | G . G5/F# . | D |\n' +
+      '[Primeira parte]\n' +
+      'A7:4 D:4\n' +
+      'A7:8 A7:8\n' +
+      'D:8 G:8 F#m:8 Bm:8 A7:8 D:8\n' +
+      '[Refrão]\n' +
+      'G:8 D:8 G:8 D:8 G:8 D:8 A7:8 D:8\n' +
+      '[Segunda parte]\n' +
+      'D:8 A7:8 D:8 G:8 F#m:8\n' +
+      'Bm:4 A7:4 D:4 D7:4\n' +
+      '[Refrão final]\n' +
+      'G:8 D:8 G:8 D:8 G:8 D:8 A7:8 D:8\n' +
+      'A7:8 D:8 A7:8 G:4 D:4',
+  },
   {
     id: 'ex-gcd',
     title: 'Primeiros passos: G – C – D',

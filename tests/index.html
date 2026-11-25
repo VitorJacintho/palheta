@@ -22,10 +22,8 @@
     import { DEFAULT_SONGS, DEFAULT_TABS } from '../js/data/defaults.js';
 
     const results = [];
-    const test = (name, fn) => {
-      try { fn(); results.push([name, true]); }
-      catch (e) { results.push([name, false, e.message]); }
-    };
+    const queue = [];
+    const test = (name, fn) => queue.push([name, fn]);
     const eq = (a, b, msg = '') => {
       const A = JSON.stringify(a), B = JSON.stringify(b);
       if (A !== B) throw new Error(`${msg} esperado ${B}, veio ${A}`);
@@ -91,6 +89,36 @@
     });
     test('todas as músicas padrão têm acordes', () => {
       DEFAULT_SONGS.forEach((s) => ok(parseProgression(s.chords, s.beatsPerBar).items.length > 3, s.title));
+    });
+
+    test('Medo da Chuva: sequência e desenhos', () => {
+      const s = DEFAULT_SONGS.find((x) => x.id === 'raul-medo-da-chuva');
+      const p = parseProgression(s.chords, s.beatsPerBar);
+      eq(p.errors, []);
+      eq(p.items[0].section, 'Intro');
+      const merged = mergeRepeats(p.items);
+      eq(merged.slice(0, 8).map((m) => m.symbol), ['A7', 'D', 'G', 'G5/F#', 'D', 'A7', 'D', 'A7']);
+      eq(merged[merged.length - 1].symbol, 'D');
+      merged.forEach((m) => ok(shapeFor(m.chord), 'sem desenho: ' + m.symbol));
+    });
+    test('apps já instalados recebem músicas padrão novas (uma vez só)', async () => {
+      const { songs } = await import('../js/services/storage.js');
+      const backup = { s: localStorage.getItem('palheta:songs'), k: localStorage.getItem('palheta:songs:seeded') };
+      try {
+        // instalação antiga: só as 5 primeiras, usuário excluiu "ex-pop" e criou uma música
+        const legacy = DEFAULT_SONGS.filter((x) => x.id.startsWith('ex-') && x.id !== 'ex-pop');
+        localStorage.setItem('palheta:songs', JSON.stringify([{ id: 'minha', title: 'Minha', chords: 'G C' }, ...legacy]));
+        localStorage.removeItem('palheta:songs:seeded');
+        const ids = songs.all().map((x) => x.id);
+        ok(ids.includes('raul-medo-da-chuva'), 'Medo da Chuva não foi adicionada');
+        ok(!ids.includes('ex-pop'), 'música excluída voltou');
+        ok(ids.includes('minha'), 'música do usuário sumiu');
+        songs.remove('raul-medo-da-chuva');
+        ok(!songs.all().some((x) => x.id === 'raul-medo-da-chuva'), 'voltou depois de excluída');
+      } finally {
+        backup.s == null ? localStorage.removeItem('palheta:songs') : localStorage.setItem('palheta:songs', backup.s);
+        backup.k == null ? localStorage.removeItem('palheta:songs:seeded') : localStorage.setItem('palheta:songs:seeded', backup.k);
+      }
     });
 
     // --- Tablatura ------------------------------------------------------------
@@ -181,6 +209,11 @@
       ['C', 'C#', 'Db', 'Eb', 'F#', 'Ab', 'Bb', 'Cm', 'C#m', 'Ebm', 'G#m', 'Bbm', 'F#7', 'C#m7', 'Bbmaj7', 'Bdim', 'Bm7(b5)', 'E5', 'D/F#']
         .forEach((s) => ok(shapeFor(parseChord(s)), s));
     });
+
+    for (const [name, fn] of queue) {
+      try { await fn(); results.push([name, true]); }
+      catch (e) { results.push([name, false, e.message]); }
+    }
 
     const out = document.getElementById('out');
     out.innerHTML = results.map(([n, pass, msg]) => `<li class="${pass ? 'ok' : 'fail'}">${pass ? '✓' : '✗'} ${n}${msg ? ' — ' + msg : ''}</li>`).join('');

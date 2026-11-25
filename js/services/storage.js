@@ -51,13 +51,28 @@ export const settings = {
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
+// Itens padrão da primeira versão (antes de existir o controle de "já oferecidos").
+const LEGACY_DEFAULT_IDS = ['ex-gcd', 'ex-pop', 'ex-blues', 'ex-menores', 'ex-cifra', 'tab-penta', 'tab-crom', 'tab-maior', 'tab-lick'];
+
 function collection(key, defaults) {
+  const seededKey = key + ':seeded';
   return {
     all() {
-      const items = read(key, null);
+      let items = read(key, null);
       if (items === null) {
         write(key, defaults);
+        write(seededKey, defaults.map((d) => d.id));
         return structuredClone(defaults);
+      }
+      // Músicas padrão novas (de atualizações do app) entram na lista uma única vez;
+      // se o usuário excluir, não voltam.
+      const seeded = new Set(read(seededKey, null) ?? [...LEGACY_DEFAULT_IDS, ...items.map((x) => x.id)]);
+      const fresh = defaults.filter((d) => !seeded.has(d.id) && !items.some((x) => x.id === d.id));
+      if (fresh.length || read(seededKey, null) === null) {
+        items = [...structuredClone(fresh), ...items];
+        fresh.forEach((d) => seeded.add(d.id));
+        write(key, items);
+        write(seededKey, [...seeded]);
       }
       return items;
     },
