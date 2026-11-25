@@ -4,8 +4,9 @@ import { settings } from './services/storage.js';
 import { speak } from './services/speech.js';
 import { measureLatency } from './services/sound.js';
 import { initTuner, enterTuner, leaveTuner } from './ui/tuner.js';
-import { initPlay, leavePlay } from './ui/play.js';
-import { initTab, leaveTab } from './ui/tabView.js';
+import { initPlay, leavePlay, refreshPlay } from './ui/play.js';
+import { initTab, leaveTab, refreshTab } from './ui/tabView.js';
+import { loadCatalog } from './services/library.js';
 import { initProgress, renderProgress } from './ui/progress.js';
 import { initEditor } from './ui/editor.js';
 import { $, $$, ensureMic, onMicChange, toast } from './ui/util.js';
@@ -111,6 +112,12 @@ function init() {
   initTuner();
   initPlay();
   initTab();
+  refreshPlay();
+  refreshTab();
+  loadCatalog().then(() => {
+    refreshPlay();
+    refreshTab();
+  });
   initProgress();
   initEditor();
   initSettings();

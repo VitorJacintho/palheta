@@ -79,6 +79,10 @@
           <button id="btn-new-song" class="btn" type="button">+ Nova música</button>
         </div>
         <p class="muted">Escolha uma música. O app fala o próximo acorde, segue o seu ritmo e no final te dá uma nota.</p>
+        <div class="filters" id="song-filters">
+          <input type="search" class="search" placeholder="Buscar música, artista ou estilo…" aria-label="Buscar músicas" />
+          <div class="filter-chips"></div>
+        </div>
         <div id="song-list" class="list"></div>
       </div>
 
@@ -87,7 +91,13 @@
         <div class="card">
           <h2 id="setup-title"></h2>
           <p id="setup-artist" class="muted"></p>
+          <div id="setup-meta" class="meta-tags"></div>
+          <div id="setup-recording" class="note hidden"></div>
           <div id="setup-chords" class="chips"></div>
+          <div class="actions left">
+            <button id="btn-record-song" class="btn ghost small" type="button">⏺ Gravar durações</button>
+            <button id="btn-copy-song" class="btn ghost small" type="button">⧉ Copiar como texto</button>
+          </div>
         </div>
         <div class="card form">
           <label>Modo
@@ -163,6 +173,10 @@
           <button id="btn-new-tab" class="btn" type="button">+ Nova tablatura</button>
         </div>
         <p class="muted">Treine solos nota a nota. Cole uma tablatura em texto (e|---5---) e o app confere cada nota que você toca.</p>
+        <div class="filters" id="tab-filters">
+          <input type="search" class="search" placeholder="Buscar tablatura…" aria-label="Buscar tablaturas" />
+          <div class="filter-chips"></div>
+        </div>
         <div id="tab-list" class="list"></div>
       </div>
 
@@ -171,6 +185,7 @@
         <div class="card">
           <h2 id="tsetup-title"></h2>
           <p id="tsetup-info" class="muted"></p>
+          <div id="tsetup-meta" class="meta-tags"></div>
           <div id="tsetup-preview" class="tab-scroll"></div>
         </div>
         <div class="card form">
@@ -196,6 +211,7 @@
           </div>
           <label class="check"><input id="topt-speak" type="checkbox" /> Falar cada nota (modo espera)</label>
           <div class="actions">
+            <button id="btn-copy-tab" class="btn ghost" type="button">⧉ Copiar</button>
             <button id="btn-edit-tab" class="btn ghost" type="button">Editar</button>
             <button id="btn-start-tab" class="btn primary big" type="button">▶ Começar</button>
           </div>
@@ -275,6 +291,18 @@
         <label id="ed-bpb-wrap">Tempos por compasso <input name="beatsPerBar" type="number" min="2" max="12" value="4" /></label>
         <label id="ed-perbeat-wrap" class="hidden">Notas por tempo <input name="perBeat" type="number" min="1" max="4" value="2" /></label>
       </div>
+      <div class="two">
+        <label id="ed-key-wrap">Tom <input name="key" maxlength="6" placeholder="ex.: D" /></label>
+        <label id="ed-capo-wrap">Capotraste <input name="capo" type="number" min="0" max="12" value="0" /></label>
+        <label>Nível
+          <select name="level">
+            <option value="iniciante">Iniciante</option>
+            <option value="intermediario">Intermediário</option>
+            <option value="avancado">Avançado</option>
+          </select>
+        </label>
+      </div>
+      <label>Estilos / tags <input name="tags" maxlength="120" placeholder="rock, nacional, anos 70" /></label>
       <label><span id="ed-text-label">Acordes / cifra</span>
         <textarea name="text" rows="10" spellcheck="false"></textarea>
       </label>
@@ -285,6 +313,8 @@
           <li><code>| G . C . | D |</code> — compassos; cada <code>.</code> estende o acorde anterior.</li>
           <li><code>G:2 C:2 D:4</code> — duração em tempos.</li>
           <li><code>[Refrão]</code> ou <code>Intro:</code> — nome da parte. <code>(2x)</code> no fim repete a linha.</li>
+          <li><code>Estrutura: Intro, A, Refrão, B, Refrão</code> — escreva cada parte uma vez e diga a ordem.</li>
+          <li>Não sabe quanto dura cada acorde? Salve e use <b>Gravar durações</b> tocando com o metrônomo.</li>
         </ul>
       </details>
       <details class="help hidden" id="ed-help-tab">

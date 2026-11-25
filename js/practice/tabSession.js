@@ -22,7 +22,7 @@ export class TabSession {
     this.bpm = bpm || item.bpm || 70;
     this.perBeat = perBeat || item.perBeat || 2;
     this.countIn = countIn;
-    this.tuning = settings.get().tuning;
+    this.tuning = item.tuning || settings.get().tuning;
     const parsed = parseTab(item.tab, this.tuning);
     this.events = parsed.events;
     this.systems = parsed.systems;

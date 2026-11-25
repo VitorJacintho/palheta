@@ -1,0 +1,15 @@
+titulo: Primeiros passos: G – C – D
+artista: Exercício
+tom: G
+bpm: 70
+compasso: 4
+nivel: iniciante
+tags: exercício, acordes abertos
+
+[Parte A]
+| G | G | C | C |
+| D | D | G | G |
+
+[Parte B]
+| C | D | G | Em |
+| C | D | G | G |

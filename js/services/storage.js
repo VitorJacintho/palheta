@@ -1,5 +1,7 @@
-// Persistência local (localStorage) para músicas, tablaturas, histórico e ajustes.
-import { DEFAULT_SONGS, DEFAULT_TABS } from '../data/defaults.js';
+// Persistência local (localStorage): músicas/tablaturas do usuário, durações
+// gravadas para músicas do catálogo, histórico e ajustes.
+// As músicas do catálogo NÃO ficam aqui — vêm sempre de /catalog (ver library.js).
+import { LEGACY_SONGS, LEGACY_TABS } from '../data/legacy.js';
 
 const PREFIX = 'palheta:';
 
@@ -18,6 +20,10 @@ function write(key, value) {
   } catch (e) {
     console.warn('Não foi possível salvar', key, e);
   }
+}
+
+function remove(key) {
+  try { localStorage.removeItem(PREFIX + key); } catch { /* ignora */ }
 }
 
 const DEFAULT_SETTINGS = {
@@ -49,43 +55,24 @@ export const settings = {
   },
 };
 
-const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
-// Itens padrão da primeira versão (antes de existir o controle de "já oferecidos").
-const LEGACY_DEFAULT_IDS = ['ex-gcd', 'ex-pop', 'ex-blues', 'ex-menores', 'ex-cifra', 'tab-penta', 'tab-crom', 'tab-maior', 'tab-lick'];
-
-function collection(key, defaults) {
-  const seededKey = key + ':seeded';
+function userCollection(key) {
   return {
     all() {
-      let items = read(key, null);
-      if (items === null) {
-        write(key, defaults);
-        write(seededKey, defaults.map((d) => d.id));
-        return structuredClone(defaults);
-      }
-      // Músicas padrão novas (de atualizações do app) entram na lista uma única vez;
-      // se o usuário excluir, não voltam.
-      const seeded = new Set(read(seededKey, null) ?? [...LEGACY_DEFAULT_IDS, ...items.map((x) => x.id)]);
-      const fresh = defaults.filter((d) => !seeded.has(d.id) && !items.some((x) => x.id === d.id));
-      if (fresh.length || read(seededKey, null) === null) {
-        items = [...structuredClone(fresh), ...items];
-        fresh.forEach((d) => seeded.add(d.id));
-        write(key, items);
-        write(seededKey, [...seeded]);
-      }
-      return items;
+      return read(key, []);
     },
     get(id) {
       return this.all().find((x) => x.id === id) || null;
     },
     save(item) {
       const items = this.all();
-      if (!item.id) item.id = uid();
-      const i = items.findIndex((x) => x.id === item.id);
-      if (i >= 0) items[i] = item; else items.unshift(item);
+      if (!item.id) item.id = 'u-' + uid();
+      const { source, ...clean } = item; // "source" é calculado, não salvo
+      const i = items.findIndex((x) => x.id === clean.id);
+      if (i >= 0) items[i] = clean; else items.unshift(clean);
       write(key, items);
-      return item;
+      return clean;
     },
     remove(id) {
       write(key, this.all().filter((x) => x.id !== id));
@@ -93,8 +80,56 @@ function collection(key, defaults) {
   };
 }
 
-export const songs = collection('songs', DEFAULT_SONGS);
-export const tabs = collection('tabs', DEFAULT_TABS);
+export const userSongs = userCollection('songs');
+export const userTabs = userCollection('tabs');
+
+/** Ajustes pessoais em músicas do catálogo (ex.: durações gravadas tocando). */
+export const overrides = {
+  get(id) {
+    return read('overrides', {})[id] || null;
+  },
+  set(id, patch) {
+    const all = read('overrides', {});
+    all[id] = { ...(all[id] || {}), ...patch };
+    write('overrides', all);
+  },
+  clear(id, field) {
+    const all = read('overrides', {});
+    if (!all[id]) return;
+    if (field) delete all[id][field]; else delete all[id];
+    if (all[id] && !Object.keys(all[id]).length) delete all[id];
+    write('overrides', all);
+  },
+};
+
+/**
+ * Instalações antigas (v1/v2) guardavam cópias das músicas padrão no aparelho.
+ * Agora o catálogo fornece essas músicas: cópias intactas são removidas,
+ * cópias que o usuário editou viram músicas dele ("minha versão").
+ */
+export function migrateLegacy(catalogIds) {
+  if (read('migrated', 0) >= 3) return;
+  const ids = new Set(catalogIds);
+  const fix = (key, legacy, field) => {
+    const items = read(key, null);
+    if (!items) return;
+    const byId = new Map(legacy.map((x) => [x.id, x]));
+    const out = [];
+    for (const it of items) {
+      const orig = byId.get(it.id);
+      const same = orig && orig.title === it.title && (orig[field] || '') === (it[field] || '') && orig.bpm === it.bpm;
+      if (same) continue;
+      if (orig || ids.has(it.id)) out.push({ ...it, id: it.id + '-minha', title: `${it.title} (minha versão)` });
+      else out.push(it);
+    }
+    write(key, out);
+  };
+  fix('songs', LEGACY_SONGS, 'chords');
+  fix('tabs', LEGACY_TABS, 'tab');
+  remove('songs:seeded');
+  remove('tabs:seeded');
+  write('migrated', 3);
+}
 
 export const history = {
   all() {

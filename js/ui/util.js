@@ -57,6 +57,25 @@ export function fmtDate(iso) {
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }) + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
+/** Copia texto para a área de transferência (com alternativa para navegadores antigos). */
+export async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch { /* sem suporte */ }
+    ta.remove();
+    return ok;
+  }
+}
+
 /** Mantém a tela ligada durante o treino (quando suportado). */
 let wakeLock = null;
 export async function keepAwake(on) {

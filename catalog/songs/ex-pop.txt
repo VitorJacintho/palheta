@@ -1,0 +1,11 @@
+titulo: Progressão pop (C – G – Am – F)
+artista: Exercício
+tom: C
+bpm: 84
+compasso: 4
+nivel: iniciante
+tags: exercício, pop, pestana
+
+C G Am F (2x)
+| C . G . | Am . F . |
+| C . G . | F . C . |

@@ -1,6 +1,8 @@
 // Service worker: deixa o app funcionando offline depois da primeira visita.
-const CACHE = 'palheta-v3';
-const ASSETS = [
+// Ao adicionar um arquivo .js novo ao app, inclua-o em APP_FILES.
+// Músicas/tablaturas do catálogo entram sozinhas (lidas de catalog/index.json).
+const CACHE = 'palheta-v4';
+const APP_FILES = [
   './',
   './index.html',
   './manifest.webmanifest',
@@ -8,36 +10,52 @@ const ASSETS = [
   './icons/icon.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',
-  './js/main.js',
+  './catalog/index.json',
+  './js/audio/chroma.js',
   './js/audio/engine.js',
   './js/audio/yin.js',
-  './js/audio/chroma.js',
-  './js/music/theory.js',
+  './js/data/legacy.js',
+  './js/main.js',
+  './js/music/chordShapes.js',
+  './js/music/songFile.js',
   './js/music/songParser.js',
   './js/music/tabParser.js',
-  './js/music/chordShapes.js',
-  './js/data/defaults.js',
-  './js/practice/scoring.js',
+  './js/music/theory.js',
   './js/practice/chordSession.js',
+  './js/practice/scoring.js',
   './js/practice/tabSession.js',
-  './js/services/storage.js',
-  './js/services/speech.js',
+  './js/services/library.js',
   './js/services/sound.js',
-  './js/ui/util.js',
-  './js/ui/tuner.js',
-  './js/ui/play.js',
-  './js/ui/tabView.js',
-  './js/ui/results.js',
+  './js/services/speech.js',
+  './js/services/storage.js',
   './js/ui/editor.js',
+  './js/ui/listFilter.js',
+  './js/ui/play.js',
   './js/ui/progress.js',
+  './js/ui/results.js',
+  './js/ui/tabView.js',
+  './js/ui/tuner.js',
+  './js/ui/util.js',
 ];
 
+const fresh = (u) => new Request(u, { cache: 'reload' });
+
+async function precache() {
+  const c = await caches.open(CACHE);
+  await c.addAll(APP_FILES.map(fresh));
+  // catálogo: um arquivo faltando não pode impedir a instalação
+  try {
+    const index = await (await fetch(fresh('./catalog/index.json'))).json();
+    const files = [
+      ...(index.songs || []).map((id) => `./catalog/songs/${id}.txt`),
+      ...(index.tabs || []).map((id) => `./catalog/tabs/${id}.txt`),
+    ];
+    await Promise.all(files.map((f) => c.add(fresh(f)).catch(() => {})));
+  } catch { /* sem catálogo offline por enquanto */ }
+}
+
 self.addEventListener('install', (e) => {
-  e.waitUntil(
-    caches.open(CACHE)
-      .then((c) => c.addAll(ASSETS.map((u) => new Request(u, { cache: 'reload' }))))
-      .then(() => self.skipWaiting()),
-  );
+  e.waitUntil(precache().then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -56,10 +74,12 @@ self.addEventListener('fetch', (e) => {
   e.respondWith(
     fetch(e.request.url, { cache: 'no-cache', credentials: 'same-origin' })
       .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(e.request, copy));
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(e.request.url, copy));
+        }
         return res;
       })
-      .catch(() => caches.match(e.request, { ignoreSearch: true }).then((r) => r || caches.match('./index.html'))),
+      .catch(() => caches.match(e.request.url, { ignoreSearch: true }).then((r) => r || caches.match('./index.html'))),
   );
 });

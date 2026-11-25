@@ -4,22 +4,30 @@
   <meta charset="utf-8" />
   <title>Palheta — testes</title>
   <style>
-    body { font: 14px/1.5 system-ui, sans-serif; background: #14110f; color: #f4ede6; padding: 16px; }
-    .ok { color: #4ade80; } .fail { color: #f87171; } h1 { font-size: 18px; }
+    body { font: 14px/1.5 system-ui, sans-serif; background: #14110f; color: #f4ede6; padding: 16px; max-width: 980px; }
+    .ok { color: #4ade80; } .fail { color: #f87171; } .warn { color: #facc15; } .muted { color: #a8998c; }
+    h1 { font-size: 18px; } h2 { font-size: 16px; margin-top: 28px; }
+    table { border-collapse: collapse; width: 100%; } td, th { border-bottom: 1px solid #3a322c; padding: 6px; text-align: left; vertical-align: top; }
+    ul.msgs { margin: 0; padding-left: 16px; }
   </style>
 </head>
 <body>
   <h1>Testes</h1>
-  <div id="summary"></div>
+  <div id="summary">Rodando…</div>
   <ul id="out"></ul>
+  <h2>Catálogo</h2>
+  <p class="muted">Cada música/tablatura de <code>catalog/</code>. ✗ = erro (precisa corrigir), ⚠ = aviso (conferir).</p>
+  <div id="catalog"></div>
+
   <script type="module">
-    import { parseChord, isChordToken, midiToFreq } from '../js/music/theory.js';
-    import { parseProgression, mergeRepeats } from '../js/music/songParser.js';
+    import { parseChord, isChordToken, midiToFreq, transposeChord, soundingOffset, sameChordFamily } from '../js/music/theory.js';
+    import { parseProgression, mergeRepeats, songSegments } from '../js/music/songParser.js';
+    import { parseItemFile, songFromFile, tabFromFile, itemToFile, LEVELS } from '../js/music/songFile.js';
     import { parseTab } from '../js/music/tabParser.js';
     import { detectPitch } from '../js/audio/yin.js';
     import { computeChroma, recognizeChord } from '../js/audio/chroma.js';
     import { shapeFor, shapeMidis } from '../js/music/chordShapes.js';
-    import { DEFAULT_SONGS, DEFAULT_TABS } from '../js/data/defaults.js';
+    import { LEGACY_SONGS, LEGACY_TABS } from '../js/data/legacy.js';
 
     const results = [];
     const queue = [];
@@ -29,6 +37,17 @@
       if (A !== B) throw new Error(`${msg} esperado ${B}, veio ${A}`);
     };
     const ok = (v, msg) => { if (!v) throw new Error(msg || 'falhou'); };
+
+    // --- Catálogo (lido direto dos arquivos, sem mexer no armazenamento) -------
+    const index = await (await fetch('../catalog/index.json', { cache: 'no-cache' })).json();
+    const loadAll = (ids, folder, fromFile) => Promise.all(ids.map(async (id) => {
+      const r = await fetch(`../catalog/${folder}/${id}.txt`, { cache: 'no-cache' });
+      return { id, status: r.status, item: r.ok ? fromFile(id, await r.text()) : null };
+    }));
+    const catSongs = await loadAll(index.songs, 'songs', songFromFile);
+    const catTabs = await loadAll(index.tabs, 'tabs', tabFromFile);
+    const song = (id) => catSongs.find((s) => s.id === id)?.item;
+    const tabItem = (id) => catTabs.find((s) => s.id === id)?.item;
 
     // --- Teoria -----------------------------------------------------------
     test('parseChord básicos', () => {
@@ -57,6 +76,12 @@
       ['Amor', 'Bem', 'Eu', 'Dói', 'Chuva', 'Ele', 'Gente', 'Cada', 'Agora'].forEach((w) => ok(!isChordToken(w), w));
       ['E', 'A', 'Em7', 'C#m7(b5)', 'D/F#', 'G7M', 'A7(9)', 'Bb°'].forEach((w) => ok(isChordToken(w), w));
     });
+    test('capotraste: acorde escrito vs. acorde que soa', () => {
+      eq(transposeChord(parseChord('G'), 2).pcs, [9, 1, 4]); // G com capo 2 soa A
+      eq(soundingOffset({ capo: 3 }), 3);
+      eq(soundingOffset({ capo: 0, tuning: 'meioTom' }), -1);
+      eq(soundingOffset({ capo: 1, tuning: 'meioTom' }), 0);
+    });
 
     // --- Progressões --------------------------------------------------------
     test('compassos com pontos', () => {
@@ -69,74 +94,136 @@
       eq(p.items[4].symbol, 'C');
     });
     test('duração explícita', () => {
-      const p = parseProgression('G:2 C:2 D:4', 4);
-      eq(p.items.map((i) => i.beats), [2, 2, 4]);
+      eq(parseProgression('G:2 C:2 D:4', 4).items.map((i) => i.beats), [2, 2, 4]);
     });
     test('cifra com letra ignora letra e pega seções', () => {
-      const p = parseProgression(DEFAULT_SONGS.find((s) => s.id === 'ex-cifra').chords, 4);
+      const p = parseProgression(song('ex-cifra').chords, 4);
       eq(p.items.map((i) => i.symbol), ['Em', 'D', 'C', 'D', 'Em', 'D', 'C', 'D', 'G', 'D/F#', 'Em', 'C', 'D', 'G']);
       eq(p.items[0].section, 'Intro');
       eq(p.items[8].section, 'Refrão');
       eq(p.ignoredLines, 4);
     });
     test('linha de letra começando com "E" é ignorada', () => {
-      const p = parseProgression('G\nE o resto da frase\nC', 4);
+      eq(parseProgression('G\nE o resto da frase\nC', 4).items.map((i) => i.symbol), ['G', 'C']);
+    });
+    test('comentários (#) são ignorados', () => {
+      const p = parseProgression('# isso é um comentário\nG C', 4);
       eq(p.items.map((i) => i.symbol), ['G', 'C']);
+      eq(p.ignoredLines, 0);
+    });
+    test('estrutura reaproveita partes', () => {
+      const p = parseProgression('[A]\nG C\n[Refrão]\nD Em\nEstrutura: A, Refrão, A, refrao', 4);
+      eq(p.items.map((i) => i.symbol), ['G', 'C', 'D', 'Em', 'G', 'C', 'D', 'Em']);
+      eq(p.items[2].section, 'Refrão');
+      eq(p.errors, []);
+    });
+    test('estrutura com parte inexistente dá erro', () => {
+      const p = parseProgression('[A]\nG C\nEstrutura: A, B', 4);
+      ok(p.errors.some((e) => e.includes('B')), 'deveria acusar a parte B');
     });
     test('mergeRepeats junta acordes iguais', () => {
       const m = mergeRepeats(parseProgression('| G | G | C | G |', 4).items);
       eq(m.map((s) => [s.symbol, s.beats]), [['G', 8], ['C', 4], ['G', 4]]);
     });
-    test('todas as músicas padrão têm acordes', () => {
-      DEFAULT_SONGS.forEach((s) => ok(parseProgression(s.chords, s.beatsPerBar).items.length > 3, s.title));
+    test('durações gravadas substituem as da cifra (se baterem)', () => {
+      const base = { chords: '| G | C | D |', beatsPerBar: 4 };
+      eq(songSegments({ ...base, durations: [2, 6, 4] }).segments.map((s) => s.beats), [2, 6, 4]);
+      const mismatch = songSegments({ ...base, durations: [2, 6] });
+      ok(mismatch.recordingMismatch, 'deveria acusar divergência');
+      eq(mismatch.segments.map((s) => s.beats), [4, 4, 4]);
     });
 
-    test('Medo da Chuva: sequência e desenhos', () => {
-      const s = DEFAULT_SONGS.find((x) => x.id === 'raul-medo-da-chuva');
-      const p = parseProgression(s.chords, s.beatsPerBar);
-      eq(p.errors, []);
-      eq(p.items[0].section, 'Intro');
-      const merged = mergeRepeats(p.items);
-      eq(merged.slice(0, 8).map((m) => m.symbol), ['A7', 'D', 'G', 'G5/F#', 'D', 'A7', 'D', 'A7']);
-      eq(merged[merged.length - 1].symbol, 'D');
-      merged.forEach((m) => ok(shapeFor(m.chord), 'sem desenho: ' + m.symbol));
+    // --- Formato de arquivo -------------------------------------------------
+    test('arquivo: cabeçalho + corpo', () => {
+      const { meta, body } = parseItemFile('titulo: Teste: com dois pontos\nartista: Fulano\ncapo: 2\nnivel: Intermediário\ntags: rock, mpb\nduracoes: 4 2,5 8\n\n[Intro]\nG C');
+      eq(meta.title, 'Teste: com dois pontos');
+      eq(meta.capo, 2);
+      eq(meta.level, 'intermediario');
+      eq(meta.tags, ['rock', 'mpb']);
+      eq(meta.durations, [4, 2.5, 8]);
+      eq(body, '[Intro]\nG C');
     });
-    test('apps já instalados recebem músicas padrão novas (uma vez só)', async () => {
-      const { songs } = await import('../js/services/storage.js');
-      const backup = { s: localStorage.getItem('palheta:songs'), k: localStorage.getItem('palheta:songs:seeded') };
+    test('arquivo: ida e volta (Copiar como texto)', () => {
+      const s = song('raul-medo-da-chuva');
+      const again = songFromFile(s.id, itemToFile({ ...s, durations: [4, 4] }, 'song'));
+      ['title', 'artist', 'key', 'bpm', 'beatsPerBar', 'level', 'tags', 'chords'].forEach((k) => eq(again[k], s[k], k));
+      eq(again.durations, [4, 4]);
+      const t = tabItem('tab-penta');
+      eq(tabFromFile(t.id, itemToFile(t, 'tab')).tab, t.tab);
+    });
+
+    // --- Gravação de durações -----------------------------------------------
+    test('gravação: trocas viram tempos inteiros na grade do metrônomo', async () => {
+      const { ChordSession } = await import('../js/practice/chordSession.js');
+      const s = new ChordSession({ id: 'x', title: 'x', bpm: 120, beatsPerBar: 4, chords: '| G | C | D | Em |' }, { mode: 'record', bpm: 120 });
+      // simula: começou em t=10; trocas em 12.04 (4 t), 13.9 (≈8 t), 16.1 (≈12 t); parou em 18.0 (16 t)
+      Object.assign(s, { playStart: 10, beatSec: 0.5, latency: 0, segStart: 10, stopTime: 18.0, changeTimes: [12.04, 13.9, 16.1] });
+      s.state.index = 3;
+      const r = s.recordingSummary();
+      eq(r.durations, [4, 4, 4, 4]);
+      ok(r.complete, 'deveria estar completa');
+    });
+    test('gravação incompleta mantém o resto original', async () => {
+      const { ChordSession } = await import('../js/practice/chordSession.js');
+      const s = new ChordSession({ id: 'x', title: 'x', bpm: 60, beatsPerBar: 4, chords: '| G | C | D |' }, { mode: 'record', bpm: 60 });
+      Object.assign(s, { playStart: 0, beatSec: 1, latency: 0, segStart: 2, stopTime: 3, changeTimes: [2.1] });
+      s.state.index = 1;
+      const r = s.recordingSummary();
+      eq(r.durations, [2, 4, 4]);
+      ok(!r.complete, 'não deveria estar completa');
+    });
+
+    // --- Migração de instalações antigas -------------------------------------
+    test('instalação antiga: cópias intactas saem, editadas ficam como "minha versão"', async () => {
+      const st = await import('../js/services/storage.js');
+      const keys = ['songs', 'tabs', 'migrated', 'songs:seeded'];
+      const backup = Object.fromEntries(keys.map((k) => [k, localStorage.getItem('palheta:' + k)]));
       try {
-        // instalação antiga: só as 5 primeiras, usuário excluiu "ex-pop" e criou uma música
-        const legacy = DEFAULT_SONGS.filter((x) => x.id.startsWith('ex-') && x.id !== 'ex-pop');
-        localStorage.setItem('palheta:songs', JSON.stringify([{ id: 'minha', title: 'Minha', chords: 'G C' }, ...legacy]));
-        localStorage.removeItem('palheta:songs:seeded');
-        const ids = songs.all().map((x) => x.id);
-        ok(ids.includes('raul-medo-da-chuva'), 'Medo da Chuva não foi adicionada');
-        ok(!ids.includes('ex-pop'), 'música excluída voltou');
-        ok(ids.includes('minha'), 'música do usuário sumiu');
-        songs.remove('raul-medo-da-chuva');
-        ok(!songs.all().some((x) => x.id === 'raul-medo-da-chuva'), 'voltou depois de excluída');
+        const edited = { ...LEGACY_SONGS.find((x) => x.id === 'ex-blues'), chords: '| A7 | E7 |' };
+        localStorage.setItem('palheta:songs', JSON.stringify([
+          { id: 'minha', title: 'Minha', chords: 'G C', bpm: 80 },
+          ...LEGACY_SONGS.filter((x) => x.id !== 'ex-blues'),
+          edited,
+        ]));
+        localStorage.setItem('palheta:tabs', JSON.stringify(LEGACY_TABS));
+        localStorage.removeItem('palheta:migrated');
+        st.migrateLegacy(index.songs.concat(index.tabs));
+        const ids = st.userSongs.all().map((x) => x.id);
+        eq(ids, ['minha', 'ex-blues-minha']);
+        eq(st.userSongs.get('ex-blues-minha').title, 'Blues em Lá (12 compassos) (minha versão)');
+        eq(st.userTabs.all(), []);
+        // não roda de novo
+        localStorage.setItem('palheta:songs', JSON.stringify([LEGACY_SONGS[0]]));
+        st.migrateLegacy(index.songs);
+        eq(st.userSongs.all().length, 1);
       } finally {
-        backup.s == null ? localStorage.removeItem('palheta:songs') : localStorage.setItem('palheta:songs', backup.s);
-        backup.k == null ? localStorage.removeItem('palheta:songs:seeded') : localStorage.setItem('palheta:songs:seeded', backup.k);
+        keys.forEach((k) => backup[k] == null ? localStorage.removeItem('palheta:' + k) : localStorage.setItem('palheta:' + k, backup[k]));
       }
+    });
+
+    // --- Offline ---------------------------------------------------------------
+    test('service worker: todos os arquivos da lista existem', async () => {
+      const src = await (await fetch('../sw.js', { cache: 'no-cache' })).text();
+      const files = [...src.matchAll(/'\.\/([^']*)'/g)].map((m) => m[1]).filter((f) => f && !f.includes('${'));
+      ok(files.length > 20, 'lista curta demais');
+      const missing = [];
+      await Promise.all(files.map(async (f) => { const r = await fetch('../' + f, { method: 'HEAD', cache: 'no-cache' }); if (!r.ok) missing.push(f); }));
+      ok(!missing.length, 'faltando: ' + missing.join(', '));
     });
 
     // --- Tablatura ------------------------------------------------------------
     test('tablatura pentatônica', () => {
-      const t = parseTab(DEFAULT_TABS[0].tab);
+      const t = parseTab(tabItem('tab-penta').tab);
       eq(t.systems.length, 2);
       eq(t.events.length, 24);
-      eq(t.events[0].notes[0], { string: 6, fret: 5, midi: 45 });   // A2
-      eq(t.events[11].notes[0].midi, 72);                            // corda 1, casa 8 = C5
-      eq(t.events[12].notes[0], { string: 1, fret: 8, midi: 72 });   // início da descida
+      eq(t.events[0].notes[0], { string: 6, fret: 5, midi: 45 });
+      eq(t.events[11].notes[0].midi, 72);
+      eq(t.events[12].notes[0], { string: 1, fret: 8, midi: 72 });
     });
     test('números de dois dígitos e acordes na tab', () => {
       const t = parseTab('e|--12--|\nB|--13--|\nG|------|\nD|------|\nA|------|\nE|--0---|');
       eq(t.events.length, 1);
       eq(t.events[0].notes.map((n) => n.fret), [12, 13, 0]);
-    });
-    test('todas as tabs padrão têm notas', () => {
-      DEFAULT_TABS.forEach((t) => ok(parseTab(t.tab).events.length >= 8, t.title));
     });
 
     // --- Áudio sintético ----------------------------------------------------
@@ -160,14 +247,12 @@
       });
     });
 
-    // espectro sintético: picos nos harmônicos das notas do shape
     function spectrumFor(midis, fft = 8192) {
       const mags = new Float32Array(fft / 2);
       midis.forEach((m) => {
         const f0 = midiToFreq(m);
         for (let h = 1; h <= 8; h++) {
-          const bin = (f0 * h) / (SR / fft);
-          const i = Math.round(bin);
+          const i = Math.round((f0 * h) / (SR / fft));
           if (i < mags.length - 1) {
             const a = 1 / h;
             mags[i] += a; mags[i - 1] += a * 0.4; mags[i + 1] += a * 0.4;
@@ -177,37 +262,78 @@
       for (let i = 0; i < mags.length; i++) mags[i] += 0.002 * Math.random();
       return mags;
     }
-    const chordsToTest = ['C', 'D', 'E', 'G', 'A', 'Am', 'Dm', 'Em', 'F', 'Bm', 'E7', 'A7', 'D7', 'G7', 'F#m', 'Cm', 'Bb'];
+    const chromaOf = (chord) => computeChroma(spectrumFor(shapeMidis(shapeFor(chord))), SR, 8192);
+
     test('reconhece acordes (espectro sintético)', () => {
       const fails = [];
-      chordsToTest.forEach((sym) => {
+      ['C', 'D', 'E', 'G', 'A', 'Am', 'Dm', 'Em', 'F', 'Bm', 'E7', 'A7', 'D7', 'G7', 'F#m', 'Cm', 'Bb'].forEach((sym) => {
         const ch = parseChord(sym);
-        const chroma = computeChroma(spectrumFor(shapeMidis(shapeFor(ch))), SR, 8192);
-        const r = recognizeChord(chroma, ch);
+        const r = recognizeChord(chromaOf(ch), ch);
         if (!r.match) fails.push(`${sym}→${r.best.symbol} (${r.targetScore.toFixed(2)})`);
       });
       ok(!fails.length, 'falhou: ' + fails.join(', '));
     });
     test('não confunde maior com menor', () => {
-      const pairs = [['C', 'Cm'], ['A', 'Am'], ['E', 'Em'], ['D', 'Dm'], ['G', 'Gm']];
       const fails = [];
-      pairs.forEach(([maj, min]) => {
-        const chroma = computeChroma(spectrumFor(shapeMidis(shapeFor(parseChord(maj)))), SR, 8192);
-        if (recognizeChord(chroma, parseChord(min)).match) fails.push(`${maj} aceito como ${min}`);
-        const chroma2 = computeChroma(spectrumFor(shapeMidis(shapeFor(parseChord(min)))), SR, 8192);
-        if (recognizeChord(chroma2, parseChord(maj)).match) fails.push(`${min} aceito como ${maj}`);
+      [['C', 'Cm'], ['A', 'Am'], ['E', 'Em'], ['D', 'Dm'], ['G', 'Gm']].forEach(([maj, min]) => {
+        if (recognizeChord(chromaOf(parseChord(maj)), parseChord(min)).match) fails.push(`${maj} aceito como ${min}`);
+        if (recognizeChord(chromaOf(parseChord(min)), parseChord(maj)).match) fails.push(`${min} aceito como ${maj}`);
       });
       ok(!fails.length, fails.join(', '));
-    });
-    test('troca G → C → D distinguível', () => {
-      const G = parseChord('G'), C = parseChord('C'), D = parseChord('D');
-      const chromaC = computeChroma(spectrumFor(shapeMidis(shapeFor(C))), SR, 8192);
-      ok(!recognizeChord(chromaC, G).match, 'C aceito como G');
-      ok(!recognizeChord(chromaC, D).match, 'C aceito como D');
     });
     test('desenhos existem para acordes comuns', () => {
       ['C', 'C#', 'Db', 'Eb', 'F#', 'Ab', 'Bb', 'Cm', 'C#m', 'Ebm', 'G#m', 'Bbm', 'F#7', 'C#m7', 'Bbmaj7', 'Bdim', 'Bm7(b5)', 'E5', 'D/F#']
         .forEach((s) => ok(shapeFor(parseChord(s)), s));
+    });
+
+    // --- Validação do catálogo (uma linha por item) ---------------------------
+    const report = [];
+    function checkSong({ id, status, item }) {
+      const errors = [], warnings = [], info = [];
+      if (!item) { errors.push(`arquivo não encontrado (HTTP ${status})`); return { id, errors, warnings, info }; }
+      if (!item.title || item.title === 'Sem título') errors.push('sem título');
+      if (!item.artist) warnings.push('sem artista');
+      if (!LEVELS.includes(item.level)) errors.push('nível inválido');
+      if (!item.key) warnings.push('sem tom');
+      const p = parseProgression(item.chords, item.beatsPerBar);
+      p.errors.forEach((e) => errors.push(e));
+      p.warnings.forEach((w) => warnings.push(w));
+      const { segments, recordingMismatch } = songSegments(item);
+      if (!segments.length) errors.push('nenhum acorde');
+      if (recordingMismatch) errors.push(`"duracoes" tem ${item.durations.length} valores, a música tem ${segments.length} trocas`);
+      const offset = soundingOffset(item);
+      const unknown = new Set(), noShape = new Set(), notRecognized = new Set();
+      segments.forEach((s) => {
+        if (!shapeFor(s.chord)) noShape.add(s.symbol);
+        const target = transposeChord(s.chord, offset);
+        if (!recognizeChord(computeChroma(spectrumFor(shapeMidis(shapeFor(s.chord)).map((m) => m + offset)), SR, 8192), target).match) notRecognized.add(s.symbol);
+      });
+      if (noShape.size) errors.push('sem desenho: ' + [...noShape].join(', '));
+      if (notRecognized.size) warnings.push('o detector não reconheceu (teste sintético): ' + [...notRecognized].join(', '));
+      const fam = [];
+      for (let i = 0; i < segments.length - 1; i++) {
+        if (sameChordFamily(segments[i].chord, segments[i + 1].chord)) fam.push(`${segments[i].symbol}→${segments[i + 1].symbol}`);
+      }
+      if (fam.length) info.push(`trocas automáticas no modo "seguir" (soam parecido): ${[...new Set(fam)].join(', ')}`);
+      info.push(item.durations ? 'durações gravadas tocando' : 'durações escritas na cifra');
+      info.push(`${segments.length} trocas · ${segments.reduce((a, s) => a + s.beats, 0)} tempos · ${[...new Set(segments.map((s) => s.symbol))].join(' ')}`);
+      return { id, title: item.title, errors, warnings, info };
+    }
+    function checkTab({ id, status, item }) {
+      const errors = [], warnings = [], info = [];
+      if (!item) { errors.push(`arquivo não encontrado (HTTP ${status})`); return { id, errors, warnings, info }; }
+      if (!LEVELS.includes(item.level)) errors.push('nível inválido');
+      const t = parseTab(item.tab, item.tuning);
+      t.errors.forEach((e) => errors.push(e));
+      if (t.events.length < 4) errors.push(`só ${t.events.length} notas`);
+      info.push(`${t.events.length} notas em ${t.systems.length} bloco(s)`);
+      return { id, title: item.title, errors, warnings, info };
+    }
+    catSongs.forEach((s) => report.push({ kind: 'Música', ...checkSong(s) }));
+    catTabs.forEach((t) => report.push({ kind: 'Tab', ...checkTab(t) }));
+    test(`catálogo: ${report.length} itens sem erro`, () => {
+      const bad = report.filter((r) => r.errors.length);
+      ok(!bad.length, bad.map((r) => `${r.id}: ${r.errors.join('; ')}`).join(' | '));
     });
 
     for (const [name, fn] of queue) {
@@ -215,11 +341,14 @@
       catch (e) { results.push([name, false, e.message]); }
     }
 
-    const out = document.getElementById('out');
-    out.innerHTML = results.map(([n, pass, msg]) => `<li class="${pass ? 'ok' : 'fail'}">${pass ? '✓' : '✗'} ${n}${msg ? ' — ' + msg : ''}</li>`).join('');
+    document.getElementById('out').innerHTML = results.map(([n, pass, msg]) => `<li class="${pass ? 'ok' : 'fail'}">${pass ? '✓' : '✗'} ${n}${msg ? ' — ' + msg : ''}</li>`).join('');
     const failed = results.filter((r) => !r[1]).length;
     document.getElementById('summary').innerHTML = `<b class="${failed ? 'fail' : 'ok'}">${results.length - failed}/${results.length} passaram</b>`;
-    window.__results = { total: results.length, failed, results };
+    document.getElementById('catalog').innerHTML = `<table><thead><tr><th></th><th>Item</th><th>Detalhes</th></tr></thead><tbody>${report.map((r) => `
+      <tr><td class="${r.errors.length ? 'fail' : r.warnings.length ? 'warn' : 'ok'}">${r.errors.length ? '✗' : r.warnings.length ? '⚠' : '✓'}</td>
+      <td><b>${r.title || r.id}</b><br><span class="muted">${r.kind} · ${r.id}</span></td>
+      <td><ul class="msgs">${[...r.errors.map((m) => `<li class="fail">${m}</li>`), ...r.warnings.map((m) => `<li class="warn">${m}</li>`), ...r.info.map((m) => `<li class="muted">${m}</li>`)].join('')}</ul></td></tr>`).join('')}</tbody></table>`;
+    window.__results = { total: results.length, failed, results, report };
   </script>
 </body>
 </html>

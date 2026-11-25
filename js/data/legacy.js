@@ -1,9 +1,7 @@
-// Conteúdo inicial: exercícios de progressão e de solo (originais/genéricos).
-// Para músicas reais, cole a cifra no editor do app — só as linhas de acordes são usadas.
-
-// Para adicionar músicas novas: inclua um item com `id` novo. Quem já tem o app
-// instalado recebe a música na próxima abertura (ver `collection` em storage.js).
-export const DEFAULT_SONGS = [
+// Músicas e exercícios que vinham embutidos até a v2 do app (antes do catálogo).
+// Usado só para migrar instalações antigas: cópias idênticas a estas são
+// removidas do aparelho (o catálogo passa a fornecê-las); cópias editadas ficam.
+export const LEGACY_SONGS = [
   {
     id: 'raul-medo-da-chuva',
     title: 'Medo da Chuva',
@@ -71,7 +69,7 @@ export const DEFAULT_SONGS = [
   },
 ];
 
-export const DEFAULT_TABS = [
+export const LEGACY_TABS = [
   {
     id: 'tab-penta',
     title: 'Pentatônica de Lá menor (5ª casa)',

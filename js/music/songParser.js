@@ -6,11 +6,16 @@
 //   G:2 C:2 D:4            duração explícita em tempos
 //   [Refrão] ou Intro:     marcadores de seção
 //   ... (2x) ou x2         repete a linha
+//   Estrutura: Intro, A, Refrão, B, Refrão
+//                          toca as partes nessa ordem (escreve o refrão uma vez só)
 // Linhas com letra (que não são só acordes) são ignoradas — dá pra colar uma cifra inteira.
 
 import { isChordToken, parseChord } from './theory.js';
 
 const REPEAT_RE = /^\(?(?:x\s*(\d+)|(\d+)\s*x)\)?$/i;
+const STRUCTURE_RE = /^(?:estrutura|ordem|structure)\s*:\s*(.+)$/i;
+
+const norm = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 
 function splitBeats(token) {
   const m = token.match(/^(.+?)[:*](\d+(?:[.,]\d+)?)$/);
@@ -27,9 +32,11 @@ function isChordish(token) {
 export function parseProgression(text, beatsPerBar = 4) {
   const items = [];
   const errors = [];
+  const warnings = [];
   let section = null;
   let ignored = 0;
   let prevBar = null;
+  let structure = null;
 
   const push = (symbol, beats, sec) => {
     const chord = parseChord(symbol);
@@ -41,9 +48,15 @@ export function parseProgression(text, beatsPerBar = 4) {
   };
 
   const lines = (text || '').replace(/\r/g, '').split('\n');
-  for (let raw of lines) {
+  for (const raw of lines) {
     let line = raw.trim();
-    if (!line) continue;
+    if (!line || line.startsWith('#') || line.startsWith('//')) continue; // comentários
+
+    const st = line.match(STRUCTURE_RE);
+    if (st) {
+      structure = st[1].split(/[,;→>]+/).map((s) => s.replace(/[[\]]/g, '').trim()).filter(Boolean);
+      continue;
+    }
 
     const sec = line.match(/^\[([^\]]+)\]\s*(.*)$/);
     if (sec) {
@@ -51,7 +64,7 @@ export function parseProgression(text, beatsPerBar = 4) {
       line = sec[2].trim();
       if (!line) continue;
     }
-    const label = line.match(/^([A-Za-zÀ-ú ]{2,20}):\s*(.*)$/);
+    const label = line.match(/^([A-Za-zÀ-ú0-9 ]{2,24}):\s*(.*)$/);
     if (label && !isChordToken(label[1])) {
       section = label[1].trim();
       line = label[2].trim();
@@ -77,7 +90,7 @@ export function parseProgression(text, beatsPerBar = 4) {
         parsedBars.push(tokens);
       }
       if (!valid) { ignored++; continue; }
-      for (let tokens of parsedBars) {
+      for (const tokens of parsedBars) {
         if (tokens.length === 1 && tokens[0] === '%') {
           if (prevBar) prevBar.forEach((it) => lineItems.push({ ...it }));
           continue;
@@ -122,7 +135,26 @@ export function parseProgression(text, beatsPerBar = 4) {
     for (let r = 0; r < repeat; r++) lineItems.forEach((it) => push(it.symbol, it.beats, section));
   }
 
-  return { items, errors, ignoredLines: ignored };
+  if (!structure) return { items, errors, warnings, ignoredLines: ignored };
+
+  // Monta a música na ordem da estrutura
+  const bySection = new Map();
+  items.forEach((it) => {
+    const k = norm(it.section || '');
+    if (!bySection.has(k)) bySection.set(k, []);
+    bySection.get(k).push(it);
+  });
+  const ordered = [];
+  structure.forEach((name) => {
+    const part = bySection.get(norm(name));
+    if (!part) errors.push(`Parte não encontrada na estrutura: ${name}`);
+    else part.forEach((it) => ordered.push({ ...it }));
+  });
+  const used = new Set(structure.map(norm));
+  [...bySection.keys()].filter((k) => k && !used.has(k))
+    .forEach((k) => warnings.push(`Parte definida mas fora da estrutura: ${bySection.get(k)[0].section}`));
+
+  return { items: ordered, errors, warnings, ignoredLines: ignored, structure };
 }
 
 /** Junta acordes iguais em sequência (o violonista não "troca" de G para G). */
@@ -130,6 +162,7 @@ export function mergeRepeats(items) {
   const out = [];
   for (const it of items) {
     const chord = parseChord(it.symbol);
+    if (!chord) continue;
     const last = out[out.length - 1];
     if (last && last.chord.root === chord.root && last.chord.suffix === chord.suffix && last.chord.bass === chord.bass) {
       last.beats += it.beats;
@@ -138,4 +171,22 @@ export function mergeRepeats(items) {
     }
   }
   return out;
+}
+
+/**
+ * Sequência final de acordes de uma música, já com as durações gravadas
+ * (se existirem e ainda baterem com a cifra).
+ * Retorna { segments, usedRecording, recordingMismatch }.
+ */
+export function songSegments(song) {
+  const segments = mergeRepeats(parseProgression(song.chords, song.beatsPerBar || 4).items);
+  const d = song.durations;
+  if (Array.isArray(d) && d.length) {
+    if (d.length === segments.length) {
+      segments.forEach((s, i) => { if (d[i] > 0) s.beats = d[i]; });
+      return { segments, usedRecording: true, recordingMismatch: false };
+    }
+    return { segments, usedRecording: false, recordingMismatch: true };
+  }
+  return { segments, usedRecording: false, recordingMismatch: false };
 }

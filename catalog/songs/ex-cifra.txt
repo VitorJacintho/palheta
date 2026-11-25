@@ -1,0 +1,21 @@
+titulo: Exemplo: colando uma cifra
+artista: Exercício
+tom: G
+bpm: 76
+compasso: 4
+nivel: iniciante
+tags: exercício, exemplo
+
+[Intro] Em D C D
+
+[Primeira parte]
+Em          D
+Aqui vai a letra da música
+C                D
+As linhas com texto são ignoradas
+
+[Refrão]
+G        D/F#      Em
+Só os acordes contam
+C         D          G
+E cada acorde vale um compasso

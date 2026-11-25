@@ -15,21 +15,58 @@ App instalável (PWA) para computador e celular, feito em HTML/JS puro — sem d
 
 - **Seguir meu ritmo** (acordes) / **Espera** (tab): o app espera *você* trocar de acorde/nota e se adapta ao seu andamento. O ritmo é avaliado em relação ao **seu próprio tempo** — não ao BPM original —, e a estabilidade mostra se você acelerou ou atrasou.
 - **Metrônomo**: o clique dita o tempo; o app avalia se as palhetadas e as trocas caíram no tempo (em ms).
+- **Gravar durações**: com o metrônomo fixo, você toca a música inteira; o app anota em que tempo cada troca aconteceu e salva as durações reais (útil porque a cifra não diz quanto dura cada acorde). Trocas que soam parecido (D → D7) são marcadas com o botão **Marcar troca** ou a tecla espaço.
 
-## Como tocar uma música sua (ex.: "Medo da Chuva")
+As listas têm **busca** (título, artista, estilo) e filtros por **nível** e **Minhas**.
 
-1. Aba **Tocar** → **+ Nova música**.
-2. Cole a cifra inteira (de qualquer site de cifras). O app pega só as linhas de acordes e ignora a letra. Cada acorde vale um compasso.
-3. Ajuste o BPM e salve. Para mais precisão de duração, use o formato de compassos:
+## Músicas: catálogo × minhas
+
+- **Catálogo** (`catalog/`): vem com o app e é sempre a versão mais nova — corrigir uma música aqui atualiza todo mundo.
+- **Minhas**: criadas no app (ou "Duplicar e editar" de uma do catálogo). Ficam só no aparelho.
+- Durações gravadas numa música do catálogo ficam salvas no aparelho, por cima da versão do catálogo ("Voltar às originais" desfaz).
+- **Copiar como texto** gera o arquivo da música no formato do catálogo — inclusive as durações gravadas.
+
+## Adicionar uma música ao catálogo
+
+1. Crie `catalog/songs/<id>.txt` (ex.: `raul-medo-da-chuva.txt`):
 
 ```
+titulo: Medo da Chuva
+artista: Raul Seixas
+tom: D
+capo: 0
+bpm: 100
+compasso: 4
+nivel: iniciante              ← iniciante | intermediario | avancado
+tags: rock, nacional
+duracoes: 4 4 2 2 8 ...       ← opcional (vem do "Copiar como texto" depois de gravar)
+
 [Intro]
-| G | D . C . |
+| A7 | D | G . G5/F# . | D |
+
 [Refrão]
-| Em | C | G . D . | G |
-G:2 C:2 D:4        ← duração em tempos
-C G Am F (2x)      ← repete a linha
+G:8 D:8 G:8 D:8
+
+Estrutura: Intro, Refrão, Refrão
 ```
+
+2. Coloque o `<id>` em `catalog/index.json`.
+3. Abra `/tests/` — a seção **Catálogo** confere a música (acordes, desenhos, detecção, estrutura, durações).
+
+Tablaturas: mesmo esquema em `catalog/tabs/<id>.txt` (cabeçalho com `notas_por_tempo` e a tab em texto).
+
+### Escrevendo a cifra
+
+```
+[Intro]                 ← nome da parte (ou "Intro:")
+| G | D . C . |         ← compassos; cada "." estende o acorde anterior
+G:2 C:2 D:4             ← duração em tempos
+C G Am F (2x)           ← repete a linha
+Estrutura: Intro, A, Refrão, B, Refrão   ← escreve cada parte uma vez só
+# comentário
+```
+
+Dá para colar uma cifra inteira (de qualquer site): o app pega só as linhas de acordes e ignora a letra. Cada acorde vale um compasso.
 
 ## Rodar no computador
 
@@ -77,8 +114,9 @@ g.chords(['G', 'C', 'D'], 1.3);   // 1,3 s por acorde
 
 ```
 index.html, css/styles.css, manifest.webmanifest, sw.js, icons/
+catalog/       músicas e tablaturas que vêm com o app (um .txt por item)
 js/audio/      microfone, YIN, cromagrama
-js/music/      teoria, leitor de cifra, leitor de tablatura, desenhos de acordes
+js/music/      teoria, leitor de cifra, formato de arquivo, tablatura, desenhos de acordes
 js/practice/   sessões de acordes e de tablatura, pontuação
 js/services/   armazenamento, voz, metrônomo e sons
 js/ui/         telas

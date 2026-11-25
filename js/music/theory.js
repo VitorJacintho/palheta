@@ -193,6 +193,20 @@ export function chordKey(chord) {
   return chord.root + ':' + chord.suffix + (chord.bass != null && chord.bass !== chord.root ? '/' + chord.bass : '');
 }
 
+/**
+ * Acorde que realmente soa quando se usa capotraste/afinação diferente.
+ * Ex.: "G" com capo 2 soa como A. Mantém o símbolo escrito para exibição.
+ */
+export function transposeChord(chord, semis) {
+  if (!chord || !semis) return chord;
+  return {
+    ...chord,
+    root: mod12(chord.root + semis),
+    bass: chord.bass == null ? null : mod12(chord.bass + semis),
+    pcs: chord.pcs.map((p) => mod12(p + semis)),
+  };
+}
+
 // Afinações (midi da corda 6 → corda 1)
 export const TUNINGS = {
   padrao: { name: 'Padrão (E A D G B E)', strings: [40, 45, 50, 55, 59, 64] },
@@ -201,3 +215,9 @@ export const TUNINGS = {
   dadgad: { name: 'DADGAD', strings: [38, 45, 50, 55, 57, 62] },
   openG: { name: 'Open G (D G D G B D)', strings: [38, 43, 50, 55, 59, 62] },
 };
+
+/** Quantos semitons os acordes escritos soam deslocados (capo + afinação). */
+export function soundingOffset({ capo = 0, tuning = 'padrao' } = {}) {
+  const t = TUNINGS[tuning] || TUNINGS.padrao;
+  return (Number(capo) || 0) + (t.strings[1] - 45); // pela corda Lá
+}

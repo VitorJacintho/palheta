@@ -1,0 +1,17 @@
+{
+  "_como_adicionar": "Crie catalog/songs/<id>.txt (ou catalog/tabs/<id>.txt) e coloque o <id> na lista abaixo. Depois abra /tests/ para conferir.",
+  "songs": [
+    "raul-medo-da-chuva",
+    "ex-gcd",
+    "ex-pop",
+    "ex-blues",
+    "ex-menores",
+    "ex-cifra"
+  ],
+  "tabs": [
+    "tab-penta",
+    "tab-crom",
+    "tab-maior",
+    "tab-lick"
+  ]
+}

@@ -1,0 +1,11 @@
+titulo: Blues em Lá (12 compassos)
+artista: Exercício
+tom: A
+bpm: 90
+compasso: 4
+nivel: iniciante
+tags: exercício, blues
+
+| A7 | D7 | A7 | A7 |
+| D7 | D7 | A7 | A7 |
+| E7 | D7 | A7 | E7 |

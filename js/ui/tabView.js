@@ -1,17 +1,23 @@
 // Aba "Tablatura": lista, configuração, sessão de solo e resultado.
-import { tabs, settings, history } from '../services/storage.js';
+import { settings, history } from '../services/storage.js';
+import { library } from '../services/library.js';
 import { parseTab, stringName } from '../music/tabParser.js';
+import { itemToFile } from '../music/songFile.js';
 import { midiToName, SOLFEGE, mod12 } from '../music/theory.js';
 import { TabSession, noteMatches } from '../practice/tabSession.js';
 import { renderResults } from './results.js';
 import { openEditor } from './editor.js';
-import { $, $$, esc, showPanel, ensureMic, toast, keepAwake, scoreClass } from './util.js';
+import { createListFilter, metaTags } from './listFilter.js';
+import { $, $$, esc, showPanel, ensureMic, toast, keepAwake, scoreClass, copyText } from './util.js';
 
 const PANELS = ['tab-list-panel', 'tab-setup-panel', 'tab-session-panel', 'tab-results-panel'];
 let current = null;
 let mode = 'wait';
 let session = null;
 let raf = 0;
+let filter;
+
+const tuningOf = (item) => item.tuning || settings.get().tuning;
 
 const STEP = 30; // px por unidade de duração
 
@@ -43,18 +49,33 @@ export function renderTabSvg(events, tuningKey = 'padrao') {
 }
 
 export function initTab() {
-  $('#btn-new-tab').onclick = () => openEditor('tab', null, (saved) => { renderList(); if (saved) select(saved.id); });
-  $('#btn-edit-tab').onclick = () => openEditor('tab', current, (saved) => {
+  filter = createListFilter($('#tab-filters'), renderList, 'palheta:tabFilter');
+  const afterEdit = (saved) => {
     renderList();
     if (saved) select(saved.id); else showPanel(PANELS, 'tab-list-panel');
-  });
+  };
+  $('#btn-new-tab').onclick = () => openEditor('tab', null, afterEdit);
+  $('#btn-edit-tab').onclick = () => {
+    if (current.source === 'catalog') {
+      const { id, source, ...rest } = current;
+      openEditor('tab', { ...rest, title: `${current.title} (minha versão)` }, afterEdit, { isCopy: true });
+    } else openEditor('tab', current, afterEdit);
+  };
+  $('#btn-copy-tab').onclick = async () => {
+    const ok = await copyText(itemToFile(current, 'tab'));
+    toast(ok ? 'Tablatura copiada como texto.' : 'Não foi possível copiar.');
+  };
   $$('[data-back=tab]').forEach((b) => (b.onclick = () => showPanel(PANELS, 'tab-list-panel')));
   $$('#tmode-seg button').forEach((b) => (b.onclick = () => setMode(b.dataset.mode)));
   $('#tbpm-range').oninput = (e) => ($('#tbpm-val').textContent = e.target.value);
   $('#btn-start-tab').onclick = start;
   $('#btn-tstop').onclick = () => session?.stop(session.state.phase === 'play');
-  renderList();
   setMode('wait');
+}
+
+/** Chamado depois que o catálogo carregou. */
+export function refreshTab() {
+  renderList();
 }
 
 export function leaveTab() {
@@ -73,25 +94,28 @@ function setMode(m) {
 function renderList() {
   const best = {};
   history.all().filter((h) => h.kind === 'tab').forEach((h) => { best[h.itemId] = Math.max(best[h.itemId] ?? 0, h.score); });
-  const items = tabs.all();
+  const all = library.tabs();
+  const items = filter.apply(all);
   $('#tab-list').innerHTML = items.length ? items.map((t) => {
-    const n = parseTab(t.tab).events.length;
+    const n = parseTab(t.tab, tuningOf(t)).events.length;
     return `
       <button class="item" type="button" data-id="${esc(t.id)}">
         <div class="icon">TAB</div>
-        <div class="meta"><b>${esc(t.title)}</b><span>${esc(t.artist || '')}${t.artist ? ' · ' : ''}${n} notas · ${t.bpm} BPM</span></div>
+        <div class="meta"><b>${esc(t.title)}${t.source === 'user' ? '<span class="tag-src">minha</span>' : ''}</b><span>${esc(t.artist || '')}${t.artist ? ' · ' : ''}${n} notas · ${t.bpm} BPM</span></div>
         ${best[t.id] != null ? `<span class="badge ${scoreClass(best[t.id])}">${best[t.id]}</span>` : ''}
       </button>`;
-  }).join('') : '<p class="muted">Nenhuma tablatura ainda.</p>';
+  }).join('') : `<p class="empty">${all.length ? 'Nenhuma tablatura encontrada com esse filtro.' : 'Carregando tablaturas…'}</p>`;
   $$('#tab-list .item').forEach((el) => (el.onclick = () => select(el.dataset.id)));
 }
 
 function select(id) {
-  current = tabs.get(id);
+  current = library.tab(id);
   if (!current) return;
-  const tuning = settings.get().tuning;
+  const tuning = tuningOf(current);
   const { events } = parseTab(current.tab, tuning);
   $('#tsetup-title').textContent = current.title;
+  $('#tsetup-meta').innerHTML = metaTags(current);
+  $('#btn-edit-tab').textContent = current.source === 'catalog' ? 'Duplicar e editar' : 'Editar';
   $('#tsetup-info').textContent = [current.artist, `${events.length} notas`, `${current.bpm} BPM`].filter(Boolean).join(' · ');
   $('#tsetup-preview').innerHTML = renderTabSvg(events, tuning);
   $('#tbpm-range').value = current.bpm || 70;

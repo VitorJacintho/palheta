@@ -2,11 +2,13 @@
 //
 // Modo "seguir": o app espera o guitarrista trocar de acorde e se adapta ao andamento dele.
 // Modo "metrônomo": andamento fixo, o app conta o tempo e avalia se você acompanha.
+// Modo "gravar": metrônomo fixo, o app espera cada troca e anota em que tempo ela
+//   aconteceu — gera as durações reais da música (sem nota no final).
 
 import { engine, getAudioContext } from '../audio/engine.js';
 import { recognizeChord } from '../audio/chroma.js';
-import { parseProgression, mergeRepeats } from '../music/songParser.js';
-import { sameChordFamily } from '../music/theory.js';
+import { songSegments } from '../music/songParser.js';
+import { sameChordFamily, transposeChord, soundingOffset, pcName, mod12 } from '../music/theory.js';
 import { speak, isSpeaking, stopSpeaking } from '../services/speech.js';
 import { Metronome } from '../services/sound.js';
 import { settings } from '../services/storage.js';
@@ -22,8 +24,12 @@ export class ChordSession {
     this.beatsPerBar = song.beatsPerBar || 4;
     this.countIn = countIn;
     this.clickDuringSong = clickDuringSong;
-    this.segments = mergeRepeats(parseProgression(song.chords, this.beatsPerBar).items);
+    this.segments = songSegments(song).segments;
     if (!this.segments.length) throw new Error('Essa música não tem acordes reconhecidos.');
+    // Com capotraste/afinação diferente, o acorde escrito soa em outro tom
+    this.offset = soundingOffset(song);
+    this.segments.forEach((s) => { s.target = transposeChord(s.chord, this.offset); });
+    this.changeTimes = [];
     this.results = this.segments.map((s) => ({
       symbol: s.symbol, chord: s.chord, beats: s.beats,
       voiced: 0, matched: 0, wrong: 0, reached: false, skipped: false,
@@ -61,7 +67,7 @@ export class ChordSession {
 
     const totalMetroBeats = this.mode === 'metronome'
       ? countBeats + Math.ceil(this.totalBeats) + 1
-      : countBeats;
+      : this.mode === 'record' ? Infinity : countBeats;
     if (totalMetroBeats > 0) {
       this.metronome = new Metronome({
         bpm: this.bpm,
@@ -76,7 +82,8 @@ export class ChordSession {
         },
       });
     }
-    speak(`Comece com ${this.segments[0].chord.spoken}`);
+    // na gravação a voz fica desligada (vazaria no microfone e atrapalharia a medição)
+    if (this.mode !== 'record') speak(`Comece com ${this.segments[0].chord.spoken}`);
     this.announced = new Set([0]);
     this.carry = null;
     this.unsub = engine.subscribe((f) => this.onFrame(f));
@@ -86,6 +93,7 @@ export class ChordSession {
   }
 
   stop(finished = false) {
+    this.stopTime = getAudioContext().currentTime;
     this.unsub?.();
     this.metronome?.stop();
     stopSpeaking();
@@ -95,28 +103,41 @@ export class ChordSession {
     this.listeners.forEach((fn) => fn(summary));
   }
 
+  /** Seguir: pula o acorde. Gravar: marca a troca na mão (quando o app não percebe). */
   skip() {
-    if (this.mode !== 'follow' || this.state.phase !== 'play') return;
+    if (this.mode === 'metronome' || this.state.phase !== 'play') return;
     const t = getAudioContext().currentTime;
     if (this.state.index >= this.segments.length - 1) return this.stop(true);
-    this.advance(t, true);
+    this.advance(t, this.mode === 'record' ? 'manual' : true);
   }
 
   // -------------------------------------------------------------------------
 
   onFrame(f) {
     if (f.onset) this.onsets.push((f.onsetTime ?? f.t) - this.latency);
-    if (this.mode === 'follow') this.followFrame(f);
-    else this.metronomeFrame(f);
+    if (this.mode === 'metronome') this.metronomeFrame(f);
+    else this.followFrame(f);
+  }
+
+  /** Nome do acorde ouvido, convertido para o desenho escrito (por causa do capo). */
+  label(chord) {
+    if (!chord) return null;
+    return this.offset ? pcName(mod12(chord.root - this.offset)) + chord.suffix : chord.symbol;
   }
 
   followFrame(f) {
     const st = this.state;
     const seg = this.segments[0];
+    const recording = this.mode === 'record';
 
     if (st.phase === 'countin') {
+      // gravando: a música começa no 1º tempo depois da contagem, no metrônomo
+      if (recording) {
+        if (f.t >= this.playStart) this.begin(this.playStart);
+        return;
+      }
       if (f.t >= this.playStart - 0.35 && f.voiced) {
-        const r = recognizeChord(f.chroma, seg.chord);
+        const r = recognizeChord(f.chroma, seg.target);
         if (f.onset || r.match) this.begin(f.t);
       } else if (f.t >= this.playStart + 8) {
         st.hint = `Toque ${seg.symbol} para começar`;
@@ -134,8 +155,9 @@ export class ChordSession {
 
     let curMatch = null;
     if (f.voiced) {
-      curMatch = recognizeChord(f.chroma, cur.chord);
+      curMatch = recognizeChord(f.chroma, cur.target);
       st.detected = curMatch.best;
+      st.detectedLabel = this.label(curMatch.best);
       st.matchNow = curMatch.match;
       if (elapsed > 0.15 && !speaking) {
         rec.voiced++;
@@ -148,17 +170,21 @@ export class ChordSession {
     // Detecção de troca para o próximo acorde
     if (i < this.segments.length - 1) {
       const next = this.segments[i + 1];
+      const sameFamily = sameChordFamily(cur.chord, next.chord);
       // D → D7, G → G5/F#: pelo som não dá pra distinguir com segurança.
-      // Nesses casos o app troca sozinho, no andamento atual do guitarrista.
-      if (sameChordFamily(cur.chord, next.chord)) {
-        if (elapsed >= expected) {
+      if (sameFamily) {
+        if (recording) {
+          // gravando, não dá pra adivinhar: a troca é marcada na mão
+          st.hint = `Quando trocar para ${next.symbol}, toque em "Marcar troca" (ou espaço).`;
+        } else if (elapsed >= expected) {
+          // tocando: o app troca sozinho, no andamento atual do guitarrista
           this.advance(this.segStart + expected, 'auto');
           return;
         }
       }
       let nextOk = false;
-      if (f.voiced && !sameChordFamily(cur.chord, next.chord)) {
-        const r2 = recognizeChord(f.chroma, next.chord);
+      if (f.voiced && !sameFamily) {
+        const r2 = recognizeChord(f.chroma, next.target);
         nextOk = r2.match && r2.targetScore > (curMatch?.targetScore ?? 0) + 0.02;
       }
       if (nextOk) {
@@ -166,7 +192,7 @@ export class ChordSession {
         this.nextStreak++;
         if (this.nextStreak >= (speaking ? CHANGE_FRAMES * 2 : CHANGE_FRAMES)) {
           const recentOnset = [...this.onsets].reverse().find((o) => o <= this.streakStart + 0.02 && o >= this.streakStart - 0.35);
-          this.advance(recentOnset ?? this.streakStart);
+          this.advance(recentOnset ?? this.streakStart - this.latency);
           return;
         }
       } else {
@@ -178,7 +204,7 @@ export class ChordSession {
         this.wrongStreak++;
         if (this.wrongStreak === 15) {
           rec.wrong++;
-          st.hint = `Isso parece ${curMatch.best.symbol}. O acorde é ${cur.symbol}.`;
+          st.hint = `Isso parece ${this.label(curMatch.best)}. O acorde é ${cur.symbol}.`;
         }
       } else if (curMatch?.match) {
         this.wrongStreak = 0;
@@ -187,19 +213,21 @@ export class ChordSession {
       // Anúncio do próximo acorde
       const s = settings.get();
       const lead = s.announce === 'before' ? this.beatSec + 0.25 : 0.15;
-      if (!this.announced.has(i + 1) && elapsed >= expected - lead) {
+      if (!recording && !this.announced.has(i + 1) && elapsed >= expected - lead) {
         this.announced.add(i + 1);
         speak(s.announce === 'before' ? next.chord.spoken : `Agora ${next.chord.spoken}`);
       }
 
-      if (elapsed > expected * 2.5 + 2.5) st.hint = st.hint || `Troque para ${next.symbol} quando quiser — ou toque em "Pular".`;
+      if (!recording && elapsed > expected * 2.5 + 2.5) st.hint = st.hint || `Troque para ${next.symbol} quando quiser — ou toque em "Pular".`;
+    } else if (recording) {
+      st.hint = 'Último acorde — toque em "Terminar" quando a música acabar.';
     } else {
       // Último acorde: termina depois da duração esperada
       if (elapsed >= expected + 0.2) this.stop(true);
     }
 
     st.elapsed = elapsed;
-    st.beatInSeg = Math.min(cur.beats, elapsed / this.beatSec);
+    st.beatInSeg = recording ? elapsed / this.beatSec : Math.min(cur.beats, elapsed / this.beatSec);
   }
 
   begin(t) {
@@ -209,7 +237,7 @@ export class ChordSession {
     this.results[0].reached = true;
   }
 
-  /** mode: false = troca detectada, true = pulada, 'auto' = troca automática */
+  /** mode: false = troca detectada, true = pulada, 'auto' = troca automática, 'manual' = marcada na mão */
   advance(t, mode = false) {
     const st = this.state;
     const i = st.index;
@@ -220,6 +248,7 @@ export class ChordSession {
     rec.expectedSec = cur.beats * this.beatSec;
     rec.skipped = skipped;
     rec.auto = mode === 'auto';
+    this.changeTimes.push(t);
 
     // Trocas automáticas não são medidas sozinhas: o trecho (ex.: D + D7) é medido
     // inteiro, do início até a próxima troca que o app realmente ouviu.
@@ -227,7 +256,8 @@ export class ChordSession {
     this.carry = rec.auto ? span : null;
     const spanSec = t - span.start;
 
-    if (!skipped && !rec.auto && spanSec > 0.2) {
+    // gravando, o andamento é o do metrônomo (fixo)
+    if (this.mode === 'follow' && !skipped && !rec.auto && spanSec > 0.2) {
       const observedBeat = spanSec / span.beats;
       rec.beatDur = observedBeat;
       const ratio = clamp(observedBeat / this.beatSec, 0.6, 1.6);
@@ -242,6 +272,28 @@ export class ChordSession {
     this.segStart = t;
     this.nextStreak = 0;
     this.wrongStreak = 0;
+  }
+
+  /** Resultado da gravação: durações em tempos inteiros, alinhadas à grade do metrônomo. */
+  recordingSummary() {
+    const n = this.segments.length;
+    const beat = this.beatSec;
+    const toBeat = (t) => Math.round((t - this.playStart) / beat);
+    const positions = [0];
+    this.changeTimes.forEach((t) => positions.push(Math.max(positions[positions.length - 1] + 1, toBeat(t))));
+    const reachedLast = this.state.index >= n - 1 && this.segStart != null;
+    if (reachedLast) positions.push(Math.max(positions[positions.length - 1] + 1, toBeat(this.stopTime - this.latency)));
+    const durations = this.segments.map((s, k) => (k + 1 < positions.length ? positions[k + 1] - positions[k] : s.beats));
+    return {
+      kind: 'record',
+      title: this.song.title,
+      itemId: this.song.id,
+      bpm: this.bpm,
+      complete: reachedLast,
+      recordedCount: positions.length - 1,
+      durations,
+      rows: this.segments.map((s, k) => ({ symbol: s.symbol, section: s.section, before: s.beats, after: durations[k], recorded: k + 1 < positions.length })),
+    };
   }
 
   metronomeFrame(f) {
@@ -270,8 +322,9 @@ export class ChordSession {
     st.beatInSeg = elapsed / this.beatSec;
 
     if (f.voiced) {
-      const r = recognizeChord(f.chroma, cur.chord);
+      const r = recognizeChord(f.chroma, cur.target);
       st.detected = r.best;
+      st.detectedLabel = this.label(r.best);
       st.matchNow = r.match;
       if (elapsed > 0.15 && !isSpeaking()) {
         rec.voiced++;
@@ -303,6 +356,7 @@ export class ChordSession {
   // -------------------------------------------------------------------------
 
   summary() {
+    if (this.mode === 'record') return this.recordingSummary();
     const R = this.results;
     const accuracyPerSeg = R.map((r) => (r.voiced >= 5 ? r.matched / r.voiced : r.reached ? 0.5 : 0));
     const accuracy = Math.round(mean(accuracyPerSeg) * 100);

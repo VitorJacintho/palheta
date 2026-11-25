@@ -1,0 +1,11 @@
+titulo: Trocando menores (Am – Dm – Em)
+artista: Exercício
+tom: Am
+bpm: 66
+compasso: 4
+nivel: iniciante
+tags: exercício, menores
+
+Intro: Am Em
+| Am | Dm | Em | Am |
+| Dm | Am | E7 | Am |
