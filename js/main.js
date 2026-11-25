@@ -103,7 +103,7 @@ function initInstall() {
   window.addEventListener('appinstalled', () => toast('App instalado! 🎸'));
 
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-    navigator.serviceWorker.register('sw.js').catch((e) => console.warn('SW', e));
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch((e) => console.warn('SW', e));
   }
 }
 
