@@ -9,6 +9,7 @@ import { strum } from '../services/sound.js';
 import { renderResults } from './results.js';
 import { openEditor } from './editor.js';
 import { createListFilter, metaTags } from './listFilter.js';
+import { openLyricsDialog, lyricsNote, lyricsAlignment, createLyricsView } from './lyricsView.js';
 import { $, $$, esc, showPanel, ensureMic, toast, keepAwake, scoreClass, copyText } from './util.js';
 
 const PANELS = ['play-list-panel', 'play-setup-panel', 'play-session-panel', 'play-results-panel'];
@@ -17,6 +18,7 @@ let mode = 'follow';
 let session = null;
 let raf = 0;
 let filter;
+let lyricsView = null;
 
 export function initPlay() {
   filter = createListFilter($('#song-filters'), renderList, 'palheta:songFilter');
@@ -33,6 +35,7 @@ export function initPlay() {
     toast(ok ? 'Música copiada como texto.' : 'Não foi possível copiar.');
   };
   $('#btn-record-song').onclick = () => start('record');
+  $('#btn-lyrics-song').onclick = () => openLyricsDialog(current, () => select(current.id));
   $$('[data-back=play]').forEach((b) => (b.onclick = () => showPanel(PANELS, 'play-list-panel')));
 
   $$('#mode-seg button').forEach((b) => (b.onclick = () => setMode(b.dataset.mode)));
@@ -133,6 +136,11 @@ function select(id) {
   const clr = rec.querySelector('[data-clear]');
   if (clr) clr.onclick = () => { library.clearDurations(current); toast('Gravação apagada.'); select(current.id); };
 
+  const note = lyricsNote(current);
+  $('#setup-lyrics').innerHTML = note || '';
+  $('#setup-lyrics').classList.toggle('hidden', !note);
+  $('#btn-lyrics-song').textContent = note ? '📝 Trocar letra' : '📝 Adicionar letra';
+
   // chips: sequência final (com seções), com duração quando não é 1 compasso
   let lastSec;
   $('#setup-chords').innerHTML = segments.map((it) => {
@@ -169,6 +177,8 @@ async function start(sessionMode) {
   $('#btn-skip').textContent = recording ? 'Marcar troca (espaço)' : 'Pular acorde';
   $('#btn-stop').textContent = recording ? '■ Terminar' : '■ Parar';
   renderTimeline();
+  lyricsView?.destroy();
+  lyricsView = createLyricsView($('#lyrics-view'), lyricsAlignment(current, session.segments));
   showPanel(PANELS, 'play-session-panel');
   keepAwake(true);
   session.onFinish(finish);
@@ -245,6 +255,10 @@ function loop() {
   dot.className = 'match-dot ' + (st.detected ? (st.matchNow ? 'ok' : 'no') : '');
   $('#sess-hint').textContent = st.phase === 'play' ? st.hint || '' : '';
   $('#sess-bpm').textContent = Math.round(60 / session.beatSec);
+
+  // letra: linha do acorde atual (e avança dentro de acordes longos)
+  const frac = recording || st.phase !== 'play' ? 0 : (st.beatInSeg ?? 0) / seg.beats;
+  lyricsView?.update(i, frac);
 
   raf = requestAnimationFrame(loop);
 }

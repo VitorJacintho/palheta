@@ -1,7 +1,7 @@
 // Service worker: deixa o app funcionando offline depois da primeira visita.
 // Ao adicionar um arquivo .js novo ao app, inclua-o em APP_FILES.
 // Músicas/tablaturas do catálogo entram sozinhas (lidas de catalog/index.json).
-const CACHE = 'palheta-v4';
+const CACHE = 'palheta-v5';
 const APP_FILES = [
   './',
   './index.html',
@@ -17,6 +17,7 @@ const APP_FILES = [
   './js/data/legacy.js',
   './js/main.js',
   './js/music/chordShapes.js',
+  './js/music/lyrics.js',
   './js/music/songFile.js',
   './js/music/songParser.js',
   './js/music/tabParser.js',
@@ -30,6 +31,7 @@ const APP_FILES = [
   './js/services/storage.js',
   './js/ui/editor.js',
   './js/ui/listFilter.js',
+  './js/ui/lyricsView.js',
   './js/ui/play.js',
   './js/ui/progress.js',
   './js/ui/results.js',

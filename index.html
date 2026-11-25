@@ -93,8 +93,10 @@
           <p id="setup-artist" class="muted"></p>
           <div id="setup-meta" class="meta-tags"></div>
           <div id="setup-recording" class="note hidden"></div>
+          <div id="setup-lyrics" class="note hidden"></div>
           <div id="setup-chords" class="chips"></div>
           <div class="actions left">
+            <button id="btn-lyrics-song" class="btn ghost small" type="button">📝 Adicionar letra</button>
             <button id="btn-record-song" class="btn ghost small" type="button">⏺ Gravar durações</button>
             <button id="btn-copy-song" class="btn ghost small" type="button">⧉ Copiar como texto</button>
           </div>
@@ -147,6 +149,7 @@
             <div id="sess-next" class="next-chord">–</div>
           </div>
         </div>
+        <div id="lyrics-view" class="card lyrics-view hidden" aria-live="off"></div>
         <div class="listen card">
           <div class="listen-row">
             <span class="muted">Ouvindo:</span>
@@ -329,6 +332,24 @@
       <div class="actions">
         <button type="button" id="editor-delete" class="btn danger ghost">Excluir</button>
         <button type="submit" class="btn primary">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Letra -->
+  <dialog id="lyrics-dialog" class="sheet">
+    <form method="dialog" id="lyrics-form">
+      <div class="sheet-head">
+        <h2>Letra: <span id="lyrics-song"></span></h2>
+        <button type="button" class="icon-btn" data-close aria-label="Fechar">✕</button>
+      </div>
+      <p class="muted small">Abra a cifra no site (ex.: Cifra Club), selecione tudo, copie (Ctrl+C) e cole aqui (Ctrl+V). O app acha sozinho em que palavra cada acorde entra.</p>
+      <p class="muted small">🔒 A letra fica salva <b>só neste aparelho</b>.</p>
+      <label><textarea name="text" rows="12" spellcheck="false" placeholder="Cole a cifra completa aqui (acordes + letra)"></textarea></label>
+      <div id="lyrics-preview" class="preview"></div>
+      <div class="actions">
+        <button type="button" id="lyrics-remove" class="btn danger ghost">Remover letra</button>
+        <button type="submit" class="btn primary">Salvar letra</button>
       </div>
     </form>
   </dialog>

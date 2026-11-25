@@ -2,3 +2,6 @@
 Thumbs.db
 .DS_Store
 *.log
+
+# letras e cifras coladas pelo usuário (direitos autorais): nunca publicar
+private/

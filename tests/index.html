@@ -28,6 +28,7 @@
     import { computeChroma, recognizeChord } from '../js/audio/chroma.js';
     import { shapeFor, shapeMidis } from '../js/music/chordShapes.js';
     import { LEGACY_SONGS, LEGACY_TABS } from '../js/data/legacy.js';
+    import { parseCifra, alignLyrics, lineFor, wordAt } from '../js/music/lyrics.js';
 
     const results = [];
     const queue = [];
@@ -103,6 +104,9 @@
       eq(p.items[8].section, 'Refrão');
       eq(p.ignoredLines, 4);
     });
+    test('"Tom: D" do cabeçalho do site não vira acorde', () => {
+      eq(parseProgression('Tom:  D\nCapotraste: 2\n\n[Intro] A7 G', 4).items.map((i) => i.symbol), ['A7', 'G']);
+    });
     test('linha de letra começando com "E" é ignorada', () => {
       eq(parseProgression('G\nE o resto da frase\nC', 4).items.map((i) => i.symbol), ['G', 'C']);
     });
@@ -146,10 +150,65 @@
     test('arquivo: ida e volta (Copiar como texto)', () => {
       const s = song('raul-medo-da-chuva');
       const again = songFromFile(s.id, itemToFile({ ...s, durations: [4, 4] }, 'song'));
-      ['title', 'artist', 'key', 'bpm', 'beatsPerBar', 'level', 'tags', 'chords'].forEach((k) => eq(again[k], s[k], k));
+      ['title', 'artist', 'key', 'bpm', 'beatsPerBar', 'level', 'tags'].forEach((k) => eq(again[k], s[k], k));
+      const seq = (x) => parseProgression(x.chords, 4).items.map((i) => [i.symbol, i.beats, i.section]);
+      eq(seq(again), seq(s), 'acordes');
       eq(again.durations, [4, 4]);
       const t = tabItem('tab-penta');
       eq(tabFromFile(t.id, itemToFile(t, 'tab')).tab, t.tab);
+    });
+
+    // --- Letra ------------------------------------------------------------------
+    test('anotações "(Frase 1)" não viram letra; "(D7)" vira acorde', () => {
+      const p = parseProgression('D        A7 (Frase 1)\n    (Frase 2)     D\nA7    D (Frase 4) (D7)', 4);
+      eq(p.items.map((i) => i.symbol), ['D', 'A7', 'D', 'A7', 'D', 'D7']);
+    });
+    test('letra: acorde em cima da palavra certa', () => {
+      const lines = parseCifra('Tom: G\n\n[Refrão]\nEm          D\nAqui vai a letra da música\n  C (Frase 2)\nOutra linha\nG D\n');
+      eq(lines.length, 3);
+      eq(lines[0].section, 'Refrão');
+      eq(lines[0].chords.map((c) => [c.symbol, c.col]), [['Em', 0], ['D', 12]]);
+      const w = wordAt(lines[0].lyric, 12);
+      eq(lines[0].lyric.slice(w[0], w[1]), 'letra');
+      eq(lines[1].chords.map((c) => c.symbol), ['C']);
+      eq(lines[2].lyric, null); // linha só de acordes = instrumental
+    });
+    test('letra: tabs, "Parte 1 de 2" e cabeçalho do site são ignorados', () => {
+      const lines = parseCifra('Tom:  D\n\n[Tab - Intro]\n\nParte 1 de 2\nE|---------3---| \nB|-----3-------| \nG|---------------|\nD|---------------|\nA|---------------|\nE|---------------|\n\n[Intro] A7  D\n');
+      eq(lines.map((l) => [l.section, l.chords.map((c) => c.symbol)]), [['Intro', ['A7', 'D']]]);
+    });
+    test('"[Tab - Frase 1]" não troca o nome da parte', () => {
+      const lines = parseCifra('[Primeira Parte]\n\n[Tab - Frase 1]\nE|---3---3---3---|\n\nD      A7\numa linha\n');
+      eq(lines[0].section, 'Primeira Parte');
+      eq(parseProgression('[Refrão]\n[Tab - Frase 2]\nG D', 4).items[0].section, 'Refrão');
+    });
+    test('letra: encaixa na sequência da música, mesmo com diferenças', () => {
+      const segs = songSegments({ chords: '| G | C | D | Em | C | D |', beatsPerBar: 4 }).segments;
+      // cifra colada sem o primeiro C e com um Am a mais
+      const lines = parseCifra('G      D\nlinha um da letra\nAm   Em\nlinha dois da letra\nC        D\nlinha três');
+      const al = alignLyrics(segs, lines);
+      eq(al.anchors.map((a) => a && a.line), [0, null, 0, 1, 2, 2]);
+      eq(lineFor(al, 1).line, 0); // C sem âncora: fica na linha anterior
+      ok(al.matched === 5, 'deveria encaixar 5 de 6');
+    });
+    test('Copiar como texto nunca leva letra nem tab', () => {
+      const cifra = '[Intro] A7  D\n\nE|---3---3---3---| \n\n[Primeira parte]\nD          A7 (Frase 1)\nUma letra qualquer aqui\n    G\nOutra linha de letra\nEstrutura: Intro, Primeira parte';
+      const out = itemToFile({ title: 't', chords: cifra }, 'song');
+      ok(!/letra|E\|/.test(out), 'vazou letra/tab: ' + out);
+      eq(parseProgression(out.split('\n\n').slice(1).join('\n\n'), 4).items.map((i) => i.symbol), parseProgression(cifra, 4).items.map((i) => i.symbol));
+    });
+    test('cifra colada do Cifra Club (arquivo local, se existir)', async () => {
+      const r = await fetch('../private/medo-da-chuva-cifra.txt', { cache: 'no-cache' });
+      if (!r.ok) return; // só existe no computador de desenvolvimento (nunca publicado)
+      const text = await r.text();
+      const lines = parseCifra(text);
+      const segs = songSegments(song('raul-medo-da-chuva')).segments;
+      const al = alignLyrics(segs, lines);
+      window.__privateLyrics = { lyricLines: lines.filter((l) => l.lyric).length, instrumental: lines.filter((l) => !l.lyric).length, matched: al.matched, total: al.total, unmatched: al.anchors.map((a, i) => (a ? null : `${i}:${segs[i].symbol}(${segs[i].section})`)).filter(Boolean) };
+      ok(al.matched / al.total >= 0.9, `encaixou só ${al.matched}/${al.total}`);
+      // a cifra colada vira a mesma sequência de acordes do catálogo
+      const pasted = mergeRepeats(parseProgression(text, 4).items).map((s) => s.symbol);
+      eq(pasted, segs.map((s) => s.symbol), 'acordes da cifra colada vs catálogo');
     });
 
     // --- Gravação de durações -----------------------------------------------

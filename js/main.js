@@ -9,6 +9,7 @@ import { initTab, leaveTab, refreshTab } from './ui/tabView.js';
 import { loadCatalog } from './services/library.js';
 import { initProgress, renderProgress } from './ui/progress.js';
 import { initEditor } from './ui/editor.js';
+import { initLyrics } from './ui/lyricsView.js';
 import { $, $$, ensureMic, onMicChange, toast } from './ui/util.js';
 
 let currentView = null;
@@ -120,6 +121,7 @@ function init() {
   });
   initProgress();
   initEditor();
+  initLyrics();
   initSettings();
   initInstall();
 

@@ -40,6 +40,33 @@ export function chords(symbols, durs, delay = 1.2) {
   return t;
 }
 
+/** "Voz" simulada (com vibrato) cantando uma melodia por cima: [midi, segundos][]. */
+export function sing(melody, delay = 1.0, vol = 0.12) {
+  const ctx = getAudioContext();
+  let t = ctx.currentTime + delay;
+  melody.forEach(([midi, d]) => {
+    if (midi == null) { t += d; return; }
+    const o = ctx.createOscillator();
+    o.type = 'triangle';
+    o.frequency.value = midiToFreq(midi);
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 5.5;
+    const depth = ctx.createGain();
+    depth.gain.value = midiToFreq(midi) * 0.015; // ±25 cents
+    lfo.connect(depth).connect(o.frequency);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.06);
+    g.gain.setValueAtTime(vol, t + d * 0.8);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(g).connect(dest);
+    o.start(t); lfo.start(t);
+    o.stop(t + d + 0.02); lfo.stop(t + d + 0.02);
+    t += d;
+  });
+  return t;
+}
+
 /** Toca notas isoladas (midi). */
 export function notes(midis, dur, delay = 1.0) {
   const ctx = getAudioContext();

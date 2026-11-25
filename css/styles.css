@@ -337,6 +337,24 @@ dialog.sheet label { display: block; margin-bottom: 12px; font-weight: 600; }
 @keyframes blink { 50% { opacity: .35; } }
 table.detail td.changed { color: var(--accent); font-weight: 700; }
 
+/* ---------- Letra rolando ---------- */
+.lyrics-view { padding: 12px 14px; overflow: hidden; position: relative; }
+.lyrics-view .lv-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.lyrics-view .lv-head button { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: .8rem; }
+.lyrics-view .lv-sec { color: var(--accent); font-size: .72rem; text-transform: uppercase; letter-spacing: .6px; margin-top: 6px; }
+.lyrics-view .lv-line {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: clamp(.78rem, 3.3vw, 1rem); white-space: pre; overflow-x: auto; scrollbar-width: none;
+  padding: 4px 6px; border-radius: 8px; transition: background .2s, opacity .2s; opacity: .45;
+}
+.lyrics-view .lv-line::-webkit-scrollbar { display: none; }
+.lyrics-view .lv-line.cur { opacity: 1; background: rgba(245, 165, 36, .1); }
+.lyrics-view .lv-line.next { opacity: .75; }
+.lyrics-view .lv-ch { color: var(--accent); font-weight: 800; min-height: 1.2em; }
+.lyrics-view .lv-ch b.on { background: var(--accent); color: #1b1108; border-radius: 4px; }
+.lyrics-view .lv-ly mark { background: none; color: var(--good); font-weight: 800; text-decoration: underline; text-underline-offset: 3px; }
+.lyrics-view .lv-inst { color: var(--muted); font-style: italic; }
+
 /* ---------- Mic gate / toast ---------- */
 .mic-gate { text-align: center; padding: 28px 18px; }
 .mic-gate p { color: var(--muted); }

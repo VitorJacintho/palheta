@@ -17,6 +17,8 @@
 //
 // O cabeçalho termina na primeira linha que não é "campo: valor" conhecido.
 
+import { chordOnlyText } from './songParser.js';
+
 export const LEVELS = ['iniciante', 'intermediario', 'avancado'];
 export const LEVEL_LABEL = { iniciante: 'Iniciante', intermediario: 'Intermediário', avancado: 'Avançado' };
 
@@ -113,5 +115,7 @@ export function itemToFile(item, kind = 'song') {
   h.push(`nivel: ${item.level || 'iniciante'}`);
   if (item.tags?.length) h.push(`tags: ${item.tags.join(', ')}`);
   if (kind === 'song' && item.durations?.length) h.push(`duracoes: ${item.durations.join(' ')}`);
-  return h.join('\n') + '\n\n' + ((kind === 'song' ? item.chords : item.tab) || '').trim() + '\n';
+  // música: sai só a parte de acordes (letra fica no aparelho — direitos autorais)
+  const body = kind === 'song' ? chordOnlyText(item.chords) : item.tab;
+  return h.join('\n') + '\n\n' + (body || '').trim() + '\n';
 }

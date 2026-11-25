@@ -1,5 +1,6 @@
 // Biblioteca = catálogo (arquivos em /catalog, sempre atualizado) + itens do usuário.
 import { songFromFile, tabFromFile } from '../music/songFile.js';
+import { hasLyrics } from '../music/lyrics.js';
 import { userSongs, userTabs, overrides, migrateLegacy } from './storage.js';
 
 const CATALOG_URL = new URL('../../catalog/', import.meta.url);
@@ -59,9 +60,31 @@ export const library = {
     else userSongs.save({ ...song, durations, bpm });
   },
   clearDurations(song) {
-    if (song.source === 'catalog') overrides.clear(song.id);
-    else {
+    if (song.source === 'catalog') {
+      overrides.clear(song.id, 'durations');
+      overrides.clear(song.id, 'bpm');
+    } else {
       const { durations, ...rest } = song;
+      userSongs.save(rest);
+    }
+  },
+  /**
+   * Letra (cifra completa colada pelo usuário). Fica SÓ no aparelho.
+   * Músicas suas criadas colando a cifra inteira já têm a letra no próprio texto.
+   */
+  lyricsOf(song) {
+    if (song.lyrics) return song.lyrics;
+    if (song.source === 'user' && hasLyrics(song.chords)) return song.chords;
+    return null;
+  },
+  saveLyrics(song, text) {
+    if (song.source === 'catalog') overrides.set(song.id, { lyrics: text });
+    else userSongs.save({ ...song, lyrics: text });
+  },
+  clearLyrics(song) {
+    if (song.source === 'catalog') overrides.clear(song.id, 'lyrics');
+    else {
+      const { lyrics, ...rest } = song;
       userSongs.save(rest);
     }
   },

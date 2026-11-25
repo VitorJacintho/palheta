@@ -17,6 +17,17 @@ const STRUCTURE_RE = /^(?:estrutura|ordem|structure)\s*:\s*(.+)$/i;
 
 const norm = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 
+/**
+ * Remove anotações entre parênteses das linhas de acordes, mantendo as colunas:
+ *   "D      A7 (Frase 1)"  → "D      A7          "
+ *   "D (Frase 4) (D7)"     → "D              D7 "   (acorde de passagem vale)
+ * "(2x)" também some aqui (a repetição é tratada antes, no fim da linha).
+ */
+export function stripNotes(line) {
+  return line.replace(/\(([^()]*)\)/g, (m, inner) =>
+    (isChordToken(inner.trim()) ? ' ' + inner + ' ' : ' '.repeat(m.length)));
+}
+
 function splitBeats(token) {
   const m = token.match(/^(.+?)[:*](\d+(?:[.,]\d+)?)$/);
   if (m && isChordToken(m[1])) return { symbol: m[1], beats: parseFloat(m[2].replace(',', '.')) };
@@ -60,11 +71,14 @@ export function parseProgression(text, beatsPerBar = 4) {
 
     const sec = line.match(/^\[([^\]]+)\]\s*(.*)$/);
     if (sec) {
-      section = sec[1].trim();
+      // "[Tab - Frase 1]" é o riff dentro da parte: não muda o nome da parte
+      if (!/^tab\s*-/i.test(sec[1])) section = sec[1].trim();
       line = sec[2].trim();
       if (!line) continue;
     }
     const label = line.match(/^([A-Za-zÀ-ú0-9 ]{2,24}):\s*(.*)$/);
+    // "Tom: D", "Capotraste na 2ª casa" etc. do cabeçalho do site não são acordes
+    if (label && /^(tom|capo|capotraste|afina[cç][aã]o|tuning|key|ritmo|batida|bpm)$/i.test(norm(label[1]))) continue;
     if (label && !isChordToken(label[1])) {
       section = label[1].trim();
       line = label[2].trim();
@@ -78,6 +92,10 @@ export function parseProgression(text, beatsPerBar = 4) {
       repeat = parseInt(rep[1] || rep[2], 10) || 1;
       line = line.slice(0, rep.index).trim();
     }
+
+    // anotações tipo "(Frase 1)" não podem transformar a linha de acordes em "letra"
+    if (/\(/.test(line) && !/^\s*[eBGDAE]\|/.test(line)) line = stripNotes(line).trim();
+    if (!line) continue;
 
     const lineItems = [];
     if (line.includes('|')) {
@@ -155,6 +173,33 @@ export function parseProgression(text, beatsPerBar = 4) {
     .forEach((k) => warnings.push(`Parte definida mas fora da estrutura: ${bySection.get(k)[0].section}`));
 
   return { items: ordered, errors, warnings, ignoredLines: ignored, structure };
+}
+
+/**
+ * Só a parte "de acordes" de uma cifra: seções, linhas de acordes, estrutura e
+ * comentários. Tira letra e tablaturas (que têm direitos autorais) — usado no
+ * "Copiar como texto", que é o que pode ir para o catálogo público.
+ */
+export function chordOnlyText(text) {
+  const out = [];
+  for (const raw of (text || '').replace(/\r/g, '').split('\n')) {
+    const t = raw.replace(/\s+$/, '');
+    const s = t.trim();
+    if (!s) { if (out.length && out[out.length - 1] !== '') out.push(''); continue; }
+    if (s.startsWith('#') || s.startsWith('//') || STRUCTURE_RE.test(s)) { out.push(s); continue; }
+    if (/^[eBGDAEbgda]\s*[|:]/.test(s) && (s.match(/-/g) || []).length >= 4) continue; // tab
+    const sec = s.match(/^\[([^\]]+)\]\s*(.*)$/);
+    const label = !sec && s.match(/^([A-Za-zÀ-ú0-9 ]{2,24}):\s*(.*)$/);
+    const head = sec ? `[${sec[1].replace(/^tab\s*-\s*/i, '').trim()}]` : label && !isChordToken(label[1]) ? `${label[1]}:` : null;
+    const rest = sec ? sec[2] : head ? label[2] : t;
+    const body = stripNotes(rest).replace(/\s+$/, '');
+    const tokens = body.split(/[\s|]+/).filter(Boolean);
+    const chordy = tokens.length && tokens.every(isChordish) && tokens.some((tk) => isChordToken(splitBeats(tk).symbol));
+    if (head) out.push(chordy ? `${head} ${body.trim()}` : head);
+    else if (chordy) out.push(body.trim());
+  }
+  while (out.length && out[out.length - 1] === '') out.pop();
+  return out.join('\n');
 }
 
 /** Junta acordes iguais em sequência (o violonista não "troca" de G para G). */

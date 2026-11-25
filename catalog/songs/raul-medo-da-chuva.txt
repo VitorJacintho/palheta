@@ -1,31 +1,42 @@
 titulo: Medo da Chuva
 artista: Raul Seixas
 tom: D
-bpm: 100
+bpm: 110
 compasso: 4
 nivel: iniciante
 tags: rock, nacional, anos 70
-fonte: sequência de acordes da cifra simplificada (Cifra Club); intro da versão principal
+fonte: sequência de acordes da cifra principal (Cifra Club); ritmo padrão 110 bpm
 
-# Durações aproximadas (cada linha da letra ≈ 2 compassos).
+# Batida (ritmo padrão): 1 ↓ · 2 x↓ ↑ · 3 ↑ · 4 x↓ ↑   (x = abafado)
+# Durações aproximadas, pela posição dos acordes na letra.
 # Para acertar: no app, "Gravar durações" tocando junto com o metrônomo.
 
 [Intro]
 | A7 | D | G . G5/F# . | D |
 
 [Primeira parte]
-A7:4 D:4
-A7:8 A7:8
-D:8 G:8 F#m:8 Bm:8 A7:8 D:8
+D:8 A7:8
+D:4 G:12
+F#m:4 Bm:4
+A7:8 D:2 D7:2
 
 [Refrão]
-G:8 D:8 G:8 D:8 G:8 D:8 A7:8 D:8
+G:6 D:2
+G:8 D:8
+G:6 D:2
+A7:6 D:2
 
 [Segunda parte]
-D:8 A7:8 D:8 G:8 F#m:8
-Bm:4 A7:4 D:4 D7:4
+D:8 A7:8
+D:4 G:12
+F#m:4 Bm:2 A7:6
+D:8 D7:4
+
+[Repete o fim]
+A7:6 D:2
 
 [Final]
-A7:8 D:8 A7:8 G:4 D:4
+G:8 D:8
+A7:6 G:2 D:4
 
-Estrutura: Intro, Primeira parte, Refrão, Segunda parte, Refrão, Final
+Estrutura: Intro, Primeira parte, Refrão, Segunda parte, Refrão, Repete o fim, Final

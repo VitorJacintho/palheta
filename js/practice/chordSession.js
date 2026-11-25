@@ -15,6 +15,7 @@ import { settings } from '../services/storage.js';
 import { clamp, mean, median, stdev, relScore, msScore, weighted, grade } from './scoring.js';
 
 const CHANGE_FRAMES = 4; // ~80 ms de confirmação para aceitar uma troca
+const STRUM_WINDOW = 0.3; // s depois de cada palhetada em que o acorde é avaliado
 
 export class ChordSession {
   constructor(song, { mode = 'follow', bpm, countIn = true, clickDuringSong = true } = {}) {
@@ -114,7 +115,14 @@ export class ChordSession {
   // -------------------------------------------------------------------------
 
   onFrame(f) {
-    if (f.onset) this.onsets.push((f.onsetTime ?? f.t) - this.latency);
+    if (f.onset) {
+      this.onsets.push((f.onsetTime ?? f.t) - this.latency);
+      this.lastStrum = f.t;
+    }
+    // O acorde é julgado logo depois de cada palhetada, quando o violão está mais
+    // forte que a voz: quem canta junto troca de nota entre as palhetadas, e essas
+    // notas não podem fazer o app achar que o acorde mudou.
+    f.afterStrum = this.lastStrum != null && f.t - this.lastStrum <= STRUM_WINDOW;
     if (this.mode === 'metronome') this.metronomeFrame(f);
     else this.followFrame(f);
   }
@@ -159,7 +167,7 @@ export class ChordSession {
       st.detected = curMatch.best;
       st.detectedLabel = this.label(curMatch.best);
       st.matchNow = curMatch.match;
-      if (elapsed > 0.15 && !speaking) {
+      if (elapsed > 0.15 && !speaking && f.afterStrum) {
         rec.voiced++;
         if (curMatch.match) rec.matched++;
       }
@@ -183,7 +191,7 @@ export class ChordSession {
         }
       }
       let nextOk = false;
-      if (f.voiced && !sameFamily) {
+      if (f.voiced && !sameFamily && f.afterStrum) {
         const r2 = recognizeChord(f.chroma, next.target);
         nextOk = r2.match && r2.targetScore > (curMatch?.targetScore ?? 0) + 0.02;
       }
@@ -195,14 +203,17 @@ export class ChordSession {
           this.advance(recentOnset ?? this.streakStart - this.latency);
           return;
         }
-      } else {
+      } else if (f.afterStrum || !f.voiced) {
         this.nextStreak = 0;
       }
 
-      // Acorde errado tocado com convicção
-      if (f.voiced && !curMatch.match && curMatch.bestScore > 0.78 && !nextOk && !speaking) {
+      // Acorde errado tocado com convicção (logo depois da palhetada).
+      // Se o "acorde ouvido" contém todas as notas do certo (ex.: D + voz no Si = "Bm7"),
+      // a nota a mais é a melodia/voz — não é erro.
+      const contains = curMatch && cur.target.core.every((iv) => curMatch.best.pcs.includes(mod12(cur.target.root + iv)));
+      if (f.voiced && f.afterStrum && !curMatch.match && !contains && curMatch.bestScore > 0.78 && !nextOk && !speaking) {
         this.wrongStreak++;
-        if (this.wrongStreak === 15) {
+        if (this.wrongStreak === 8) {
           rec.wrong++;
           st.hint = `Isso parece ${this.label(curMatch.best)}. O acorde é ${cur.symbol}.`;
         }
@@ -326,17 +337,17 @@ export class ChordSession {
       st.detected = r.best;
       st.detectedLabel = this.label(r.best);
       st.matchNow = r.match;
-      if (elapsed > 0.15 && !isSpeaking()) {
+      if (elapsed > 0.15 && !isSpeaking() && f.afterStrum) {
         rec.voiced++;
         if (r.match) rec.matched++;
       }
-      if (r.match) {
+      if (r.match && f.afterStrum) {
         this.matchStreak++;
         if (this.matchStreak === 3 && rec.latency == null) {
           rec.latency = f.t - 0.04 - this.latency - b.start;
           rec.reached = true;
         }
-      } else this.matchStreak = 0;
+      } else if (f.afterStrum) this.matchStreak = 0;
     } else {
       st.matchNow = false;
     }
