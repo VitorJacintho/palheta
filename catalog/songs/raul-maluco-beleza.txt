@@ -1,0 +1,64 @@
+titulo: Maluco Beleza
+artista: Raul Seixas
+tom: Am
+bpm: 96
+compasso: 4
+nivel: intermediario
+tags: rock, nacional, anos 70, pestana
+fonte: sequência de acordes da cifra principal (Cifra Club)
+
+# Durações aproximadas: cada linha ≈ 2 compassos, dividida entre os acordes
+# da linha. Para acertar: "Gravar durações".
+
+[Intro]
+| Am | G . C . |
+
+[Primeira parte]
+# começa sobre o riff (tab na cifra) e segue com a letra
+C:4 G/B:4
+Am:4 F:4
+G:4 C:4
+G:8
+C:4 G/B:4
+Am:4 F:4
+G:4 C:4
+Am:8
+C:4 G/B:4
+Am:4 F:4
+G:4 C:2 G:2
+C:4 G/B:4
+Am:4 F:4
+G:4 C:2 Am:2
+
+[Segunda parte]
+Dm:4 G:4
+Dm:4 G:4
+
+[Refrão]
+C:4 E7:4
+F:4 G:4
+C:4 E7:4
+F:4 G:2 G7:2
+
+[Terceira parte]
+C:4 G/B:4
+Am:4 F:4
+G:4 C:2 Am:2
+
+[Solo]
+C:4 E7:4
+F:8
+G:4 C:4
+Am:4 Dm:4
+
+[Refrão final]
+C:4 E7:4
+F:4 G:4
+C:4 E7:4
+F:4 G:4
+C:8
+
+[Final]
+E7:4 F:4 G:8
+
+Estrutura: Intro, Primeira parte, Segunda parte, Refrão, Terceira parte, Segunda parte, Solo, Segunda parte, Refrão final, Final
